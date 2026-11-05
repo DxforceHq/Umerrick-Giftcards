@@ -1,0 +1,15 @@
+asgiref==3.12.1
+colorama==0.4.6
+dj-database-url==2.3.0
+Django==5.2.18
+django-axes==8.3.1
+gunicorn==23.0.0
+mysqlclient==2.3.0
+packaging==26.3
+pillow==13.0.0
+python-dotenv==1.2.4
+qrcode==8.2
+sqlparse==0.6.0
+typing_extensions==4.16.0
+tzdata==2026.5
+
