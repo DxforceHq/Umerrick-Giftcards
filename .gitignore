@@ -1,0 +1,11 @@
+.env
+.env.*
+!.env.development.example
+!.env.production.example
+*.py[cod]
+__pycache__/
+db.sqlite3
+staticfiles/
+media/qrcodes/
+.dx/
+.venv/

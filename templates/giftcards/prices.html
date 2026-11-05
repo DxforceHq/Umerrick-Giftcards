@@ -1,0 +1,39 @@
+{% extends 'base.html' %}{% load static %}
+{% block title %}Price list · U_MERRICK{% endblock %}
+{% block content %}
+<header class="heading price-heading"><div><div class="eyebrow">IN STORE</div><h1>Price list</h1><p>Find an item and confirm its current selling price.</p></div></header>
+
+<div class="price-toolbar">
+  <label for="price-search">Search items</label>
+  <input id="price-search" type="search" placeholder="Search by item name" autocomplete="off">
+  <span id="price-sync" class="price-sync" role="status">Checking latest prices…</span>
+</div>
+
+{% if admin_access %}
+<div class="price-admin-actions">
+  <button class="primary" id="price-add-toggle" type="button" aria-controls="price-add-content" aria-expanded="false">Add items</button>
+</div>
+<section class="price-add-content" id="price-add-content" hidden>
+      <h2>Add items and prices</h2>
+      <form method="post" action="{% url 'price_create' %}" id="price-add-form">{% csrf_token %}
+        <div id="price-add-rows"><div class="price-add-row"><label>Item name<input name="name" maxlength="180" required placeholder="Item name" autocomplete="off"></label><label>Price (₦)<input name="price" type="number" min="0" step="0.01" inputmode="decimal" required placeholder="0.00"></label><button class="price-remove-row" type="button" aria-label="Remove this item" hidden>Remove</button></div></div>
+        <div class="price-add-controls"><button type="button" class="secondary" id="price-add-another">Add another item</button><button type="submit" class="primary">Save items</button></div>
+      </form>
+      <template id="price-add-row-template"><div class="price-add-row"><label>Item name<input name="name" maxlength="180" required placeholder="Item name" autocomplete="off"></label><label>Price (₦)<input name="price" type="number" min="0" step="0.01" inputmode="decimal" required placeholder="0.00"></label><button class="price-remove-row" type="button" aria-label="Remove this item">Remove</button></div></template>
+  </section>
+
+<div id="price-admin-list" class="price-admin-list">
+  {% for item in items %}<article class="price-row price-admin-item" data-price-name="{{ item.name|lower }}"><button type="button" class="price-admin-summary" aria-label="Edit {{ item.name|title }}" aria-expanded="false"><span><strong>{{ item.name|title }}</strong><small>Price updated {{ item.price_updated_at|date:'M j, Y H:i' }}</small></span>
+    <span class="price-admin-value">₦{{ item.price|floatformat:2 }}</span>{% if not item.is_active %}<span class="badge generated">Inactive</span>{% endif %}</button>
+    <div class="price-inline-editor" hidden><form method="post" action="{% url 'price_update' item.pk %}" class="price-edit-form">{% csrf_token %}<input type="hidden" name="name" value="{{ item.name|title }}"><label>Price (₦)<input name="price" type="number" min="0" step="0.01" inputmode="decimal" value="{{ item.price }}" required></label>
+        <button class="primary" type="submit">Save price</button></form><form method="post" action="{% url 'price_toggle' item.pk %}" class="price-toggle-form">{% csrf_token %}
+        <button class="secondary" type="submit">{% if item.is_active %}Make inactive{% else %}Restore item{% endif %}</button></form></div></article>{% empty %}<div class="empty">No items yet. Use Add items to create your price list.</div>{% endfor %}
+</div>
+{% else %}
+<div id="price-staff-list" class="price-staff-list" aria-live="polite">
+  {% for item in items %}<article class="price-row" data-price-name="{{ item.name|lower }}"><div><strong>{{ item.name|title }}</strong><small>Price updated {{ item.price_updated_at|date:'M j, Y H:i' }}</small></div><b>₦{{ item.price|floatformat:2 }}</b></article>{% empty %}<div class="empty">No prices available yet.</div>{% endfor %}
+</div>
+{% endif %}
+<div class="empty price-search-empty" id="price-search-empty" hidden>No matching items.</div>
+{% endblock %}
+{% block scripts %}<script id="price-config" type="application/json">{"dataUrl":"{% url 'prices_data' %}","staff":{% if admin_access %}false{% else %}true{% endif %}}</script><script src="{% static 'js/prices.js' %}?v=20261104-inline-price-editor" defer></script>{% endblock %}
