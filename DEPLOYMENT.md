@@ -83,50 +83,39 @@ Only expose the reverse proxy publicly. Keep MySQL private.
 
 ## Passenger hosting
 
-For cPanel or Passenger hosting:
+The Namecheap Python application and Git checkout share one directory:
+`/home/clocojzu/repo/umerrick`. Configure **Setup Python App** with this
+application root, `passenger_wsgi.py` as the startup file, and `application`
+as the entry point. Select Python 3.13 and verify the virtual environment path
+shown by cPanel matches the one in `.cpanel.yml` (currently
+`/home/clocojzu/virtualenv/repo/umerrick/3.13/bin/python`).
 
-1. Upload the project to the application root.
-2. Create the production virtual environment and install
-   requirements.txt into it.
-3. Keep .env.production in the application root with restrictive file
-   permissions; never place it in a public static directory.
-4. Configure Passenger to use passenger_wsgi.py as the startup file.
-5. Configure Passenger to use the production virtualenv interpreter.
-6. Set the application root and restart Passenger after changes.
-
-passenger_wsgi.py loads .env.production before importing Django, so the
-Passenger process uses umerrick.settings.production rather than the local
-development settings.
+Create `/home/clocojzu/repo/umerrick/.env.production` on the server with
+restrictive file permissions. It is ignored by Git. Do not place production
+secrets in `.cpanel.yml` or in a public web directory. The Passenger entry
+point loads this file before Django starts.
 
 ### Namecheap cPanel Git deployment
 
 cPanel's Git Version Control feature looks for the hidden file `.cpanel.yml`
-at the repository root. The checked-in manifest in this project:
+at the repository root. Because the checkout is already the Python application
+root, the manifest does not copy source files. It installs dependencies in the
+existing virtual environment, imports `passenger_wsgi.py` so the production
+environment is loaded, runs `collectstatic`, and touches `tmp/restart.txt` to
+reload Passenger. Confirm the two paths in `.cpanel.yml` match **Setup Python
+App** before deploying. The dependency installation task supplies
+`python-dotenv` for the following collectstatic task.
 
-- copies only application source, templates, and static source files;
-- leaves `.env.production`, media, `staticfiles`, and SQLite data on the
-  server untouched;
-- installs `requirements.txt` into the cPanel Python application's virtual
-  environment;
-- runs `collectstatic`; and
-- touches `tmp/restart.txt` so Passenger reloads the new code.
+Use cPanel **Git Version Control → Update from Remote → Deploy HEAD Commit**
+for future releases, then check the deployment output. This manifest does not
+run database migrations. Review and apply new migrations separately using
+cPanel's Python script facility and the production settings. Never reset the
+production database as part of deployment.
 
-Before deploying, edit `.cpanel.yml` and replace `CPANEL_USER`, `APP_ROOT`,
-and the Python version in `VENV_PYTHON` with the values shown by Namecheap's
-**Setup Python App** page. Provision the real `.env.production` in the
-application root (the Passenger entry point requires that file); cPanel
-environment variables may supplement it but do not replace it. The manifest
-deliberately does not run migrations; apply them manually after reviewing the
-release:
-
-    /home/CPANEL_USER/virtualenv/umerrick/3.13/bin/python \
-      /home/CPANEL_USER/umerrick/manage.py migrate \
-      --settings=umerrick.settings.production
-
-After the first deploy, set the Python application's **Application root** to
-`APP_ROOT`, **Application startup file** to `passenger_wsgi.py`, and restart
-the application. Keep the repository's `.env.production` out of Git and do
-not put it under `public_html`.
+After deployment, verify that `/static/css/app.css`,
+`/static/css/retail-workspace.css`, and `/static/js/app-shell.js` return assets
+on the production domain, then check the login and admin pages. WhiteNoise
+serves the collected files from the checkout's `staticfiles` directory.
 
 ## Release checks
 
