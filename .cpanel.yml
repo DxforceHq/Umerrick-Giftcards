@@ -1,39 +1,21 @@
 ---
-# cPanel Git deployment manifest for Namecheap.
-#
-# Before the first deployment, replace CPANEL_USER and APP_ROOT with the
-# values from cPanel > Setup Python App.  The Python version in VENV_PYTHON
-# must match the version selected for that application.
-#
-# The application root must contain .env.production, which is provisioned
-# separately in cPanel and is intentionally never copied by this manifest.
-
 deployment:
   tasks:
-    - export APP_ROOT=/home/clocojzu/umerrick
-    - export VENV_PYTHON=/home/clocojzu/virtualenv/umerrick/3.13/bin/python
+    # Application directory
+    - export APP_ROOT=/home/clocojzu/repo/umerrick
 
-    # Fail before copying anything when the hosting placeholders were not
-    # replaced or the cPanel Python application is not configured correctly.
-    - /bin/bash -lc 'case "$APP_ROOT:$VENV_PYTHON" in *CPANEL_USER*) echo "Update APP_ROOT and VENV_PYTHON in .cpanel.yml before deploying." >&2; exit 1;; esac; test -x "$VENV_PYTHON" || { echo "Passenger virtualenv Python not found: $VENV_PYTHON" >&2; exit 1; }'
+    # Existing Python virtual environment
+    - export VENV_PYTHON=/home/clocojzu/virtualenv/repo/umerrick/3.13/bin/python
 
-    # Copy source code only.  Do not deploy .git, .env files, db.sqlite3,
-    # staticfiles, or media; those are server/runtime data.
-    - /bin/mkdir -p "$APP_ROOT"
-    - /bin/cp manage.py passenger_wsgi.py requirements.txt "$APP_ROOT/"
-    - /bin/cp -R umerrick "$APP_ROOT/"
-    - /bin/cp -R giftcards "$APP_ROOT/"
-    - /bin/cp -R templates "$APP_ROOT/"
-    - /bin/cp -R static "$APP_ROOT/"
+    # Check the paths and private environment before installing or restarting
+    - test -f "$APP_ROOT/manage.py" && test -f "$APP_ROOT/passenger_wsgi.py" && test -f "$APP_ROOT/.env.production" && test -x "$VENV_PYTHON"
 
-    # Install the locked dependencies into the Python app environment.
-    - "$VENV_PYTHON" -m pip install --requirement "$APP_ROOT/requirements.txt"
+    # Install dependencies
+    - cd "$APP_ROOT" && "$VENV_PYTHON" -m pip install -r requirements.txt
 
-    # Build static assets using the production settings.  Configure the
-    # production variables in cPanel's Python App environment first; Django's
-    # production settings intentionally do not read a local development .env.
-    - "$VENV_PYTHON" "$APP_ROOT/manage.py" collectstatic --noinput --settings=umerrick.settings.production
+    # Collect Django static files
+    - cd "$APP_ROOT" && "$VENV_PYTHON" -c "import passenger_wsgi; from django.core.management import call_command; call_command('collectstatic', interactive=False)"
 
-    # Passenger reload convention on cPanel/Apache.
+    # Restart Passenger
     - /bin/mkdir -p "$APP_ROOT/tmp"
     - /usr/bin/touch "$APP_ROOT/tmp/restart.txt"
