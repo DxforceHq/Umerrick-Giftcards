@@ -98,6 +98,36 @@ passenger_wsgi.py loads .env.production before importing Django, so the
 Passenger process uses umerrick.settings.production rather than the local
 development settings.
 
+### Namecheap cPanel Git deployment
+
+cPanel's Git Version Control feature looks for the hidden file `.cpanel.yml`
+at the repository root. The checked-in manifest in this project:
+
+- copies only application source, templates, and static source files;
+- leaves `.env.production`, media, `staticfiles`, and SQLite data on the
+  server untouched;
+- installs `requirements.txt` into the cPanel Python application's virtual
+  environment;
+- runs `collectstatic`; and
+- touches `tmp/restart.txt` so Passenger reloads the new code.
+
+Before deploying, edit `.cpanel.yml` and replace `CPANEL_USER`, `APP_ROOT`,
+and the Python version in `VENV_PYTHON` with the values shown by Namecheap's
+**Setup Python App** page. Provision the real `.env.production` in the
+application root (the Passenger entry point requires that file); cPanel
+environment variables may supplement it but do not replace it. The manifest
+deliberately does not run migrations; apply them manually after reviewing the
+release:
+
+    /home/CPANEL_USER/virtualenv/umerrick/3.13/bin/python \
+      /home/CPANEL_USER/umerrick/manage.py migrate \
+      --settings=umerrick.settings.production
+
+After the first deploy, set the Python application's **Application root** to
+`APP_ROOT`, **Application startup file** to `passenger_wsgi.py`, and restart
+the application. Keep the repository's `.env.production` out of Git and do
+not put it under `public_html`.
+
 ## Release checks
 
 Before switching traffic to a release:
