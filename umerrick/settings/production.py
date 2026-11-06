@@ -30,6 +30,22 @@ if any("*" in origin or not origin.startswith("https://") for origin in CSRF_TRU
 DATABASE_URL = required_env("DATABASE_URL")
 DATABASES = database_from_url(DATABASE_URL, require_mysql=True)
 
+# Serve the collected static directory through Passenger/WSGI when the
+# hosting provider does not expose an Apache static-file mapping.
+MIDDLEWARE = [
+    "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
+    *MIDDLEWARE[1:],
+]
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
+
 SECURE_SSL_REDIRECT = True
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
