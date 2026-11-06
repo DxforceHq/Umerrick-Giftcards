@@ -81,6 +81,23 @@ The reverse proxy must terminate TLS, redirect HTTP to HTTPS, and pass:
 
 Only expose the reverse proxy publicly. Keep MySQL private.
 
+## Passenger hosting
+
+For cPanel or Passenger hosting:
+
+1. Upload the project to the application root.
+2. Create the production virtual environment and install
+   requirements.txt into it.
+3. Keep .env.production in the application root with restrictive file
+   permissions; never place it in a public static directory.
+4. Configure Passenger to use passenger_wsgi.py as the startup file.
+5. Configure Passenger to use the production virtualenv interpreter.
+6. Set the application root and restart Passenger after changes.
+
+passenger_wsgi.py loads .env.production before importing Django, so the
+Passenger process uses umerrick.settings.production rather than the local
+development settings.
+
 ## Release checks
 
 Before switching traffic to a release:
