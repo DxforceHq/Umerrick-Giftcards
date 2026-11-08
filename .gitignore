@@ -9,3 +9,8 @@ staticfiles/
 media/qrcodes/
 .dx/
 .venv/
+#cpanel config
+passenger_wsgi.py
+
+# django enviromnet
+manage.py
