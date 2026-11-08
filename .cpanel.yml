@@ -1,21 +1,11 @@
 ---
 deployment:
   tasks:
-    # Application directory
-    - export APP_ROOT=/home/clocojzu/repo/umerrick
+    - export REPO=/home/clocojzu/repo/umerrick_app
+    - export LIVE=/home/clocojzu/umerrick_app
 
-    # Existing Python virtual environment
-    - export VENV_PYTHON=/home/clocojzu/virtualenv/repo/umerrick/3.13/bin/python
+    - test -f "$LIVE/passenger_wsgi.py"
+    - test -f "$LIVE/manage.py"
+    - test -f "$LIVE/.env.production"
 
-    # Check the paths and private environment before installing or restarting
-    - test -f "$APP_ROOT/manage.py" && test -f "$APP_ROOT/passenger_wsgi.py" && test -f "$APP_ROOT/.env.production" && test -x "$VENV_PYTHON"
-
-    # Install dependencies
-    - cd "$APP_ROOT" && "$VENV_PYTHON" -m pip install -r requirements.txt
-
-    # Collect Django static files
-    - cd "$APP_ROOT" && "$VENV_PYTHON" -c "import passenger_wsgi; from django.core.management import call_command; call_command('collectstatic', interactive=False)"
-
-    # Restart Passenger
-    - /bin/mkdir -p "$APP_ROOT/tmp"
-    - /usr/bin/touch "$APP_ROOT/tmp/restart.txt"
+    - /usr/bin/rsync -av --exclude='.git/' --exclude='.github/' --exclude='.env*' --exclude='passenger_wsgi.py' --exclude='manage.py' --exclude='db.sqlite3' --exclude='staticfiles/' --exclude='media/' --exclude='__pycache__/' "$REPO/" "$LIVE/"
