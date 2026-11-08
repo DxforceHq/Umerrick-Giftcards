@@ -160,6 +160,15 @@ h2 { color: var(--ink); }
 .badge.expired, .badge.rejected, .badge.cancelled { background: var(--danger-bg); color: var(--danger); }
 label { color: var(--ink); font-size: 12px; font-weight: 700; }
 input, select { min-height: 44px; padding: 10px 12px; border-color: var(--border); border-radius: var(--radius-sm); background: var(--white); font-size: 12px; }
+.password-field { position: relative; display: block; width: 100%; min-width: 0; }
+.password-field > input { width: 100%; padding-right: 52px !important; }
+.password-visibility-toggle { position: absolute; top: 50%; right: 4px; transform: translateY(-50%); display: grid; place-items: center; width: 40px; height: 40px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--text-secondary); cursor: pointer; }
+.password-visibility-toggle:hover { color: var(--ink); background: var(--ivory); }
+.password-visibility-toggle:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+.password-visibility-toggle svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.password-visibility-toggle .password-eye-slash { display: none; }
+.password-visibility-toggle[aria-pressed="true"] .password-eye-slash { display: block; }
+.inline .password-field { flex: 1 1 auto; }
 input::placeholder { color: #827B70; }
 input:focus, select:focus { border-color: var(--gold); }
 .errorlist { font-size: 11px; }
@@ -540,7 +549,7 @@ tbody tr:hover td { background: #FBF9F4; }
   .login-card form { margin-top: 22px; }
   .login-card form > label { margin: 0 0 7px; font-size: 12px; }
   .login-card form > input + label { margin-top: 16px; }
-  .login-card form > input { min-height: 48px; padding: 12px 13px; border-radius: 9px; font-size: 16px; }
+  .login-card form > input, .login-card form > .password-field > input { min-height: 48px; padding: 12px 13px; border-radius: 9px; font-size: 16px; }
   .login-card form > .primary { min-height: 48px; margin-top: 17px; border-radius: 9px; font-size: 13px; }
   .login-support { display: flex; justify-content: flex-end; margin-top: 8px; }
   .forgot-placeholder { min-height: 30px; padding: 0; border: 0; background: transparent; color: var(--gold-text); font: inherit; font-size: 11px; font-weight: 600; }

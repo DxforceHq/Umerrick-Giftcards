@@ -17,5 +17,5 @@
 {% else %}
 <div class="auth-foot">U_MERRICK <i>—</i> ICONIC FITS</div></section></main>
 {% endif %}
-<script src="{% static 'js/app-shell.js' %}?v=20261104-welcome-refresh" defer></script>{% if request.user.is_authenticated %}<script src="{% static 'js/camera-permission.js' %}?v=20261019" defer></script>{% endif %}{% block scripts %}{% endblock %}</body></html>
+<script src="{% static 'js/app-shell.js' %}?v=20261104-welcome-refresh" defer></script><script src="{% static 'js/password-visibility.js' %}?v=20261108" defer></script>{% if request.user.is_authenticated %}<script src="{% static 'js/camera-permission.js' %}?v=20261019" defer></script>{% endif %}{% block scripts %}{% endblock %}</body></html>
 
