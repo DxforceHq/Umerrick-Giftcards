@@ -125,7 +125,7 @@
       phone.pattern = '[0-9]{10}';
       phone.required = true;
       phone.maxLength = 10;
-      phone.placeholder = '7037761997';
+      phone.placeholder = '7012345678';
       phone.setAttribute('aria-describedby', 'activation-phone-prefix');
       const phoneEntry = document.createElement('div');
       phoneEntry.className = 'phone-input';

@@ -1,5 +1,6 @@
 import base64, io, json, uuid
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta, timezone as datetime_timezone
+from zoneinfo import ZoneInfo
 from urllib.parse import parse_qs, urlencode, urlparse
 from django.conf import settings
 from django.core import signing
@@ -9,7 +10,6 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import PasswordChangeForm
 from django.contrib.auth.models import User
 from django.db.models import Count, Q
-from django.db.models.functions import TruncDate
 from django.db import transaction
 from django.http import Http404, JsonResponse, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -119,6 +119,17 @@ def price_toggle(request,item_id):
     return redirect('prices')
 CARD_AUDIT_ACTIONS=('ACTIVATION','REDEMPTION')
 
+def filter_local_dates(queryset, field, start=None, end=None):
+    """Filter local calendar dates with UTC instants, without database date casts."""
+    local_zone=ZoneInfo(settings.TIME_ZONE)
+    if start:
+        lower=datetime.combine(start,time.min,tzinfo=local_zone).astimezone(datetime_timezone.utc)
+        queryset=queryset.filter(**{f'{field}__gte':lower})
+    if end:
+        upper=datetime.combine(end+timedelta(days=1),time.min,tzinfo=local_zone).astimezone(datetime_timezone.utc)
+        queryset=queryset.filter(**{f'{field}__lt':upper})
+    return queryset
+
 def dashboard_period(request):
     """Return an inclusive date window in the application's local timezone."""
     today=timezone.localdate()
@@ -157,11 +168,11 @@ def activity_chart(start,end):
         else: cursor=date(cursor.year+1,1,1) if cursor.month==12 else date(cursor.year,cursor.month+1,1)
     counts={key:{'issued':0,'activated':0,'redeemed':0} for key in keys}
     for name,field in [('issued','created_at'),('activated','activated_at'),('redeemed','redeemed_at')]:
-        rows=(GiftCard.objects.filter(**{f'{field}__date__gte':start,f'{field}__date__lte':end})
-              .annotate(day=TruncDate(field,tzinfo=timezone.get_current_timezone()))
-              .values('day').annotate(total=Count('pk')))
-        for row in rows:
-            if row['day'] is not None: counts[bucket(row['day'])][name]+=row['total']
+        rows=filter_local_dates(GiftCard.objects.all(),field,start,end).values_list(field,flat=True)
+        for timestamp in rows.iterator():
+            if timestamp is not None:
+                day=timezone.localtime(timestamp,ZoneInfo(settings.TIME_ZONE)).date()
+                counts[bucket(day)][name]+=1
     labels=[(f'{key:%b} {key.day}' if interval!='month' else f'{key:%b %Y}') for key in keys]
     return {'interval':interval,'labels':labels,'issued':[counts[key]['issued'] for key in keys],
             'activated':[counts[key]['activated'] for key in keys],
@@ -171,12 +182,12 @@ def activity_chart(start,end):
 def dashboard(request):
     if is_admin(request.user):
         period,start,end,period_error=dashboard_period(request)
-        cards=GiftCard.objects.filter(created_at__date__gte=start,created_at__date__lte=end)
+        cards=filter_local_dates(GiftCard.objects.all(),'created_at',start,end)
         stats={s:0 for s in ['GENERATED','WAITING','READY','REDEEMED','EXPIRED','CANCELLED']}
         for card in cards.iterator(): stats[card.display_status]+=1
         stats['TOTAL']=cards.count()
-        recent=(AuditEvent.objects.filter(action__in=CARD_AUDIT_ACTIONS,occurred_at__date__gte=start,
-                                          occurred_at__date__lte=end).select_related('actor','card'))
+        recent=(filter_local_dates(AuditEvent.objects.filter(action__in=CARD_AUDIT_ACTIONS),
+                                   'occurred_at',start,end).select_related('actor','card'))
         return render(request,'giftcards/dashboard_admin.html',{'stats':stats,'recent':recent[:10],
             'by_kind':cards.values('kind').annotate(total=Count('id')),'from_filter':start.isoformat(),
             'to_filter':end.isoformat(),'period':period,'period_error':period_error,
@@ -207,8 +218,8 @@ def cards_view(request):
     try: date.fromisoformat(end) if end else None
     except ValueError: end=''
     if staff.isdigit(): cards=cards.filter(activated_by_id=staff)
-    if start: cards=cards.filter(created_at__date__gte=start)
-    if end: cards=cards.filter(created_at__date__lte=end)
+    cards=filter_local_dates(cards,'created_at',date.fromisoformat(start) if start else None,
+                             date.fromisoformat(end) if end else None)
     if query:
         search=Q(code__icontains=query)|Q(customer_phone__icontains=query)
         phone_query=query[1:] if len(query)==11 and query.startswith('0') and query.isdigit() else query
@@ -354,8 +365,8 @@ def audit_view(request):
     try: date.fromisoformat(end) if end else None
     except ValueError: end=''
     if staff.isdigit(): events=events.filter(actor_id=int(staff))
-    if start: events=events.filter(occurred_at__date__gte=start)
-    if end: events=events.filter(occurred_at__date__lte=end)
+    events=filter_local_dates(events,'occurred_at',date.fromisoformat(start) if start else None,
+                              date.fromisoformat(end) if end else None)
     if code: events=events.filter(card__code__icontains=code)
     expired_reason=Q(details__reason_code='EXPIRED_CARD')|Q(details__reason='This card has expired.')
     rejected_count=events.filter(outcome='REJECTED').count()

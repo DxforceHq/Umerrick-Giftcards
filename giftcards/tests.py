@@ -1,6 +1,8 @@
 import threading, uuid
 from decimal import Decimal
-from datetime import timedelta
+from datetime import datetime, time, timedelta, timezone as datetime_timezone
+from zoneinfo import ZoneInfo
+from django.conf import settings
 from unittest.mock import patch
 from django.contrib.auth.models import User
 from django.db import IntegrityError, connection, transaction
@@ -145,7 +147,7 @@ class GiftCardTests(TestCase):
         self.client.force_login(self.admin); r=self.client.post(reverse('generate'),{'kind':'N10','count':1}); self.assertEqual(r.status_code,200); self.assertEqual(GiftCard.objects.count(),1)
         self.client.force_login(self.staff); self.assertEqual(self.client.get(reverse('generate')).status_code,403)
     def test_staff_activates_card_and_records_times(self):
-        c=self.card(); self.client.force_login(self.staff); r=self.client.post(reverse('activate',args=[c.id]),content_type='application/json',data='{"customer_phone":"+2347037761997"}')
+        c=self.card(); self.client.force_login(self.staff); r=self.client.post(reverse('activate',args=[c.id]),content_type='application/json',data='{"customer_phone":"+2347012345678"}')
         c.refresh_from_db(); self.assertEqual(r.status_code,200); self.assertEqual(c.status,'ACTIVE'); self.assertEqual(c.activated_by,self.staff); self.assertAlmostEqual((c.expires_at-c.activated_at).total_seconds(),60*86400,delta=1)
         event=AuditEvent.objects.filter(card=c,action='ACTIVATION').get(); self.assertEqual(event.outcome,'SUCCESS')
     def test_unauthenticated_cannot_activate(self):
@@ -255,6 +257,32 @@ class GiftCardTests(TestCase):
         self.assertEqual(response.status_code,200)
         self.assertEqual(response.context['period'],'30d')
         self.assertEqual(response.context['to_filter'],timezone.localdate().isoformat())
+    def test_local_date_boundaries_are_inclusive_at_start_exclusive_at_next_midnight(self):
+        day=timezone.localdate()
+        zone=ZoneInfo(settings.TIME_ZONE)
+        midnight=datetime.combine(day,time.min,tzinfo=zone).astimezone(datetime_timezone.utc)
+        before=self.card(); at_start=self.card(); at_end=self.card()
+        for card,instant in ((before,midnight-timedelta(microseconds=1)),
+                             (at_start,midnight),(at_end,midnight+timedelta(days=1))):
+            card.created_at=instant; card.save(update_fields=['created_at'])
+        self.client.force_login(self.admin)
+        response=self.client.get(reverse('dashboard'),{'period':'custom','from':day.isoformat(),'to':day.isoformat()})
+        self.assertEqual(response.context['stats']['TOTAL'],1)
+        self.assertEqual(response.context['chart']['issued'],[1])
+        register=self.client.get(reverse('cards'),{'from':day.isoformat(),'to':day.isoformat()})
+        self.assertEqual([card.pk for card in register.context['cards']],[at_start.pk])
+    def test_default_dashboard_period_filters_from_local_midnight(self):
+        today=timezone.localdate(); start=today-timedelta(days=29)
+        zone=ZoneInfo(settings.TIME_ZONE)
+        lower=datetime.combine(start,time.min,tzinfo=zone).astimezone(datetime_timezone.utc)
+        old=self.card(); included=self.card()
+        old.created_at=lower-timedelta(microseconds=1); old.save(update_fields=['created_at'])
+        included.created_at=lower; included.save(update_fields=['created_at'])
+        self.client.force_login(self.admin)
+        response=self.client.get(reverse('dashboard'))
+        self.assertEqual(response.context['period'],'30d')
+        self.assertEqual(response.context['stats']['TOTAL'],1)
+        self.assertEqual(sum(response.context['chart']['issued']),1)
     def test_camera_permission_ui_is_only_on_authenticated_pages(self):
         self.client.force_login(self.staff)
         dashboard=self.client.get(reverse('dashboard'))
