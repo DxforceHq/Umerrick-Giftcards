@@ -1,16 +1,18 @@
 ---
----
 deployment:
   tasks:
-    - export APP_ROOT=/home/clocojzu/umerrick_app
-    - export PYTHON=/home/clocojzu/virtualenv/umerrick_app/3.13/bin/python
+    # Live application and Git repository
+    - export APP_ROOT=/home/clocojzu/repo/umerrick_app
 
-    # Verify production configuration
+    # Python 3.13 virtual environment
+    - export PYTHON=/home/clocojzu/virtualenv/repo/umerrick_app/3.13/bin/python
+
+    # Verify production files
     - test -f "$APP_ROOT/passenger_wsgi.py"
     - test -f "$APP_ROOT/.env.production"
     - test -x "$PYTHON"
 
-    # Collect static files using production settings
+    # Collect static files with production settings
     - cd "$APP_ROOT" && "$PYTHON" -c "import passenger_wsgi; from django.core.management import call_command; call_command('collectstatic', interactive=False)"
 
     # Restart Passenger
