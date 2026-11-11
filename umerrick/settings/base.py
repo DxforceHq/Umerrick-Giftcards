@@ -6,6 +6,7 @@ so a production process only uses values supplied by its service manager.
 """
 
 import os
+from datetime import timedelta
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -36,10 +37,12 @@ AUTHENTICATION_BACKENDS = [
     "axes.backends.AxesStandaloneBackend",
     "giftcards.auth.CaseInsensitiveModelBackend",
 ]
-AXES_FAILURE_LIMIT = 5
-AXES_COOLOFF_TIME = 1
+AXES_FAILURE_LIMIT = 10
+AXES_COOLOFF_TIME = timedelta(minutes=5)
 AXES_LOCKOUT_PARAMETERS = [["username", "ip_address"]]
 AXES_USERNAME_CALLABLE = "giftcards.auth.normalized_axes_username"
+AXES_RESET_COOL_OFF_ON_FAILURE_DURING_LOCKOUT = False
+AXES_LOCKOUT_CALLABLE = "giftcards.auth.login_lockout_response"
 
 ROOT_URLCONF = "umerrick.urls"
 TEMPLATES = [

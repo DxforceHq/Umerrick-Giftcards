@@ -113,7 +113,7 @@
     });
     const actions = document.querySelector('#card-actions');
     actions.replaceChildren();
-    if (card.status === 'GENERATED') {
+    if (card.status === 'GENERATED' && card.can_activate !== false) {
       const phoneLabel = document.createElement('label');
       phoneLabel.htmlFor = 'activation-phone';
       phoneLabel.textContent = 'Customer phone number';
@@ -148,7 +148,7 @@
       button.textContent = 'Confirm activation';
       button.addEventListener('click', () => activate(card.id, phone.value, amount.value));
       actions.append(phoneLabel, phoneEntry, amountLabel, amount, button);
-    } else if (card.status === 'READY') {
+    } else if (card.status === 'READY' && card.can_redeem !== false) {
       const label = document.createElement('label');
       label.textContent = 'Eligible purchase amount (₦)';
       label.htmlFor = 'purchase-amount';

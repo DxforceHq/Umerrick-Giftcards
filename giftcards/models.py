@@ -8,6 +8,9 @@ class Profile(models.Model):
     user=models.OneToOneField(settings.AUTH_USER_MODEL,on_delete=models.CASCADE,related_name='profile')
     role=models.CharField(max_length=8,choices=Role.choices,default=Role.STAFF)
     must_change_password=models.BooleanField(default=True)
+    can_activate_cards=models.BooleanField(default=True)
+    can_redeem_cards=models.BooleanField(default=True)
+    can_view_prices=models.BooleanField(default=True)
 
 class PriceItem(models.Model):
     name=models.CharField(max_length=180,db_index=True)

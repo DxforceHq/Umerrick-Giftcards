@@ -14,7 +14,7 @@ Django application for U_MERRICK's free loyalty rewards: ₦10,000 and ₦15,000
 
 ## Price list on staff phones
 
-Open **Price list** while online at least once. The staff page saves the active item names, prices, and last price-update times on that phone. It remains readable offline, including after sign-out. A last-synced timestamp shows how old the saved copy is. The page refreshes when it comes online, when brought to the foreground, and periodically while open. Inactive items disappear from Staff's list after the next successful sync; Admin can still see and restore them. Offline prices can be outdated until the phone reconnects. Clearing the browser's site data removes the offline copy. Offline access is intended for staff's private phones and does not authorize gift-card actions.
+Open **Price list** inside the installed app while online at least once. The installed app has its own saved data on iPhone, so opening the list only in Safari does not prepare the installed app for offline use. The staff page saves the active item names, prices, and last price-update times on that phone. The installed app opens the saved price list when launched offline, including after sign-out. A last-synced timestamp shows how old the saved copy is. The page refreshes when it comes online, when brought to the foreground, and periodically while open. Inactive items disappear from Staff's list after the next successful sync; Admin can still see and restore them. Offline prices can be outdated until the phone reconnects. Clearing the app's site data removes the offline copy. Offline access is intended for staff's private phones and does not authorize gift-card actions.
 
 The authenticated app header includes **Refresh** to check for a PWA update and reload the current page. When the installed app opens with an active session, a U_MERRICK welcome screen offers **Continue** or **Sign out**. Normal browser tabs continue directly to the page; unauthenticated users still see the login page. The welcome screen returns when the installed app has been in the background for at least five minutes.
 
@@ -33,6 +33,10 @@ python manage.py runserver
 ```
 
 Open `http://127.0.0.1:8000/`. The first superuser is the Admin. Admins create Staff accounts at **Staff**; the initial password is shown to the Admin once and Staff must change it at first login. Staff use **Scanner** to activate or redeem cards. Generated cards can be previewed and printed or saved as PDF from the browser print dialog.
+
+Sign-in warns users to contact an administrator after five failed attempts. Ten failed attempts for the same username and IP cause a five-minute lockout with a visible countdown; an administrator can reset a forgotten password from Staff accounts. After login, a saved destination outside a staff member's permissions opens their dashboard instead. Direct GET navigation to a restricted page also returns to the dashboard; protected API and form actions still reject unauthorized requests.
+
+The Admin selects each new staff member's access to activation, redemption, and the price list on the Staff page and can change it later. Existing staff keep all three permissions when the migration is applied. The Overview's team performance table includes staff and admins and uses all-time figures: a redeemed card is credited to the person who activated it, regardless of who redeemed it. Run migrations after deploying this change. A device that is offline cannot learn about a newly revoked price-list permission until it reconnects; the app clears its saved price list on the next authenticated online page load.
 
 ## Environment and deployment separation
 

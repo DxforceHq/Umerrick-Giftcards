@@ -22,9 +22,17 @@ class GenerateForm(forms.Form):
 class StaffCreateForm(forms.Form):
     username=forms.RegexField(regex=r'^[\w.@+-]+$',max_length=150)
     password=forms.CharField(min_length=10,widget=forms.PasswordInput)
+    can_activate_cards=forms.BooleanField(required=False,initial=True,label='Activate gift cards')
+    can_redeem_cards=forms.BooleanField(required=False,initial=True,label='Redeem gift cards')
+    can_view_prices=forms.BooleanField(required=False,initial=True,label='View price list')
     def clean_username(self):
         username=self.cleaned_data['username']
         if User.objects.filter(username__iexact=username).exists(): raise forms.ValidationError('That username is already in use.')
         return username
     def clean_password(self):
         password=self.cleaned_data['password']; password_validation.validate_password(password); return password
+
+class StaffPermissionsForm(forms.Form):
+    can_activate_cards=forms.BooleanField(required=False,label='Activate gift cards')
+    can_redeem_cards=forms.BooleanField(required=False,label='Redeem gift cards')
+    can_view_prices=forms.BooleanField(required=False,label='View price list')

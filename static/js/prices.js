@@ -99,17 +99,13 @@
       if (config.staff) render(data.items);
       status.textContent = `Up to date · Last synced ${dateText(data.synced_at)}`;
     } catch (_) {
-      status.textContent = saved ? `Offline saved prices · Last synced ${dateText(saved.synced_at)}` : 'Offline · Open this list online once to save prices';
+      status.textContent = saved ? `Offline saved prices · Last synced ${dateText(saved.synced_at)}` :
+        list?.querySelector('.price-row') ? 'Offline saved prices · Check again when online' :
+        'Offline · Open this list online once to save prices';
     }
   }
   sync();
   window.addEventListener('online', sync);
   document.addEventListener('visibilitychange', () => { if (!document.hidden && navigator.onLine) sync(); });
   window.setInterval(() => { if (!document.hidden && navigator.onLine) sync(); }, 60000);
-  if (config.staff && 'serviceWorker' in navigator && window.isSecureContext) {
-    navigator.serviceWorker.register('/pwa/prices-worker.js', { scope: '/' })
-      .then(() => navigator.serviceWorker.ready)
-      .then(registration => registration.active?.postMessage({ type: 'CACHE_PRICE_PAGE' }))
-      .catch(() => {});
-  }
 })();

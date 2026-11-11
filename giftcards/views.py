@@ -16,9 +16,9 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST, require_http_methods
-from .forms import GenerateForm, StaffCreateForm, PriceItemForm
+from .forms import GenerateForm, StaffCreateForm, StaffPermissionsForm, PriceItemForm
 from .models import AuditEvent, GiftCard, Profile, Redemption, PriceItem
-from .permissions import role_required
+from .permissions import role_required, staff_can
 from .services import generate_cards, activate, redeem, card_discount, database_now, normalize_customer_phone
 
 def request_json(request):
@@ -55,7 +55,7 @@ def card_from_qr_payload(payload):
     return GiftCard.objects.filter(pk=card_id).first()
 def is_admin(user): return user.is_superuser or getattr(getattr(user,'profile',None),'role','')==Profile.Role.ADMIN
 
-@role_required('ADMIN','STAFF')
+@role_required('ADMIN','STAFF',permission='can_view_prices')
 def prices_view(request):
     if request.method!='GET': return HttpResponse(status=405)
     admin_access=is_admin(request.user)
@@ -67,7 +67,7 @@ def prices_view(request):
     if not admin_access: response['X-Price-Offline']='staff'
     return response
 
-@role_required('ADMIN','STAFF')
+@role_required('ADMIN','STAFF',permission='can_view_prices')
 def prices_data(request):
     if request.method!='GET': return HttpResponse(status=405)
     items=PriceItem.objects.filter(is_active=True).order_by('name','pk')
@@ -82,16 +82,31 @@ def price_create(request):
     if not names or len(names)!=len(prices) or len(names)>100:
         messages.error(request,'Add between 1 and 100 complete items at a time.')
         return redirect('prices')
-    forms=[PriceItemForm({'name':name,'price':price}) for name,price in zip(names,prices)]
-    valid=all(form.is_valid() for form in forms)
-    normalized=[form.cleaned_data['name'].casefold() for form in forms] if valid else []
-    if not valid or len(set(normalized))!=len(normalized):
-        messages.error(request,'No items were added. Check every name and price; item names must be unique.')
-        return redirect('prices')
+    existing={name.casefold() for name in PriceItem.objects.values_list('name',flat=True)}
+    added=0; duplicates=[]; invalid=[]
     with transaction.atomic():
-        for form in forms:
+        for row_number,(name,price) in enumerate(zip(names,prices),start=1):
+            normalized=' '.join(name.split()).title()
+            key=normalized.casefold()
+            if key and key in existing:
+                duplicates.append(normalized)
+                continue
+            form=PriceItemForm({'name':name,'price':price})
+            if not form.is_valid():
+                invalid.append(row_number)
+                continue
             item=form.save(commit=False); item.updated_by=request.user; item.save()
-    messages.success(request,f'{len(forms)} item{"s" if len(forms)!=1 else ""} added to the price list.')
+            existing.add(key); added+=1
+    if added:
+        messages.success(request,f'{added} item{"s" if added!=1 else ""} added to the price list.')
+    if duplicates:
+        examples=', '.join(duplicates[:3])
+        suffix='…' if len(duplicates)>3 else ''
+        messages.warning(request,f'{len(duplicates)} duplicate item{"s" if len(duplicates)!=1 else ""} skipped: {examples}{suffix}.')
+    if invalid:
+        rows=', '.join(str(row) for row in invalid[:5])
+        suffix='…' if len(invalid)>5 else ''
+        messages.warning(request,f'{len(invalid)} invalid row{"s" if len(invalid)!=1 else ""} skipped (row {rows}{suffix}). Check the name and price.')
     return redirect('prices')
 
 @role_required('ADMIN')
@@ -188,7 +203,16 @@ def dashboard(request):
         stats['TOTAL']=cards.count()
         recent=(filter_local_dates(AuditEvent.objects.filter(action__in=CARD_AUDIT_ACTIONS),
                                    'occurred_at',start,end).select_related('actor','card'))
+        performance=[]
+        staff=User.objects.filter(Q(profile__role__in=(Profile.Role.STAFF,Profile.Role.ADMIN))|Q(is_superuser=True)).select_related('profile').annotate(
+            total_activated=Count('activated_cards',distinct=True),
+            total_redeemed=Count('activated_cards',filter=Q(activated_cards__status=GiftCard.Status.REDEEMED),distinct=True),
+        ).order_by('username')
+        for person in staff:
+            person.redemption_rate=round(100*person.total_redeemed/person.total_activated,1) if person.total_activated else 0
+            performance.append(person)
         return render(request,'giftcards/dashboard_admin.html',{'stats':stats,'recent':recent[:10],
+            'staff_performance':performance,
             'by_kind':cards.values('kind').annotate(total=Count('id')),'from_filter':start.isoformat(),
             'to_filter':end.isoformat(),'period':period,'period_error':period_error,
             'period_label':f'{start:%b} {start.day}, {start:%Y} – {end:%b} {end.day}, {end:%Y}',
@@ -248,11 +272,11 @@ def card_qr(request,card_id):
     payload=qr_payload(request,card)
     image=qrcode.make(payload); buffer=io.BytesIO(); image.save(buffer,format='PNG')
     return HttpResponse(buffer.getvalue(),content_type='image/png')
-@role_required('ADMIN','STAFF')
+@role_required('ADMIN','STAFF',any_permission=('can_activate_cards','can_redeem_cards'))
 def scanner(request): return render(request,'giftcards/scanner.html')
 def card_json(card):
     return {'id':str(card.id),'code':card.code,'kind':card.get_kind_display(),'status':card.display_status,'activated_at':card.activated_at.isoformat() if card.activated_at else None,'eligible_at':card.eligible_at.isoformat() if card.eligible_at else None,'expires_at':card.expires_at.isoformat() if card.expires_at else None,'value':str(card.value) if card.value is not None else None,'activation_purchase_amount':str(card.activation_purchase_amount) if card.activation_purchase_amount is not None else None,'server_now':database_now().isoformat()}
-@role_required('ADMIN','STAFF')
+@role_required('ADMIN','STAFF',any_permission=('can_activate_cards','can_redeem_cards'))
 @require_POST
 def card_lookup(request):
     try: data=request_json(request)
@@ -271,13 +295,15 @@ def card_lookup(request):
     if not card:
         return JsonResponse({'error':'No card matches that code.'},status=404)
     response=card_json(card)
+    response['can_activate']=staff_can(request.user,'can_activate_cards')
+    response['can_redeem']=staff_can(request.user,'can_redeem_cards')
     if card.status==GiftCard.Status.ACTIVE and card.expires_at and database_now()>=card.expires_at:
         reason='This card has expired.'
         AuditEvent.objects.create(card=card,actor=request.user,action='REDEMPTION',previous_state='EXPIRED',new_state='EXPIRED',outcome='REJECTED',details={'reason':reason,'reason_code':'EXPIRED_CARD','stage':'presentation','source':'qr' if qr_payload_value is not None else 'manual'})
         response['status']='EXPIRED'
         response['rejection_reason']=reason
     return JsonResponse(response)
-@role_required('ADMIN','STAFF')
+@role_required('ADMIN','STAFF',permission='can_activate_cards')
 @require_POST
 def activate_view(request,card_id):
     try: data=request_json(request)
@@ -292,7 +318,7 @@ def activate_view(request,card_id):
         return JsonResponse({'error':'Card not found.'},status=404)
     except ValueError as exc: return JsonResponse({'error':str(exc)},status=409)
     return JsonResponse(card_json(card))
-@role_required('ADMIN','STAFF')
+@role_required('ADMIN','STAFF',permission='can_redeem_cards')
 @require_POST
 def preview_redemption(request,card_id):
     card=GiftCard.objects.filter(pk=card_id).first()
@@ -307,7 +333,7 @@ def preview_redemption(request,card_id):
     except (ValueError,TypeError) as exc:
         return JsonResponse({'error':str(exc)},status=400)
     return JsonResponse({'purchase_amount':str(purchase),'discount_amount':str(discount),'payable_amount':str(payable),'card':card_json(card)})
-@role_required('ADMIN','STAFF')
+@role_required('ADMIN','STAFF',permission='can_redeem_cards')
 @require_POST
 def redeem_view(request,card_id):
     try: data=request_json(request)
@@ -327,10 +353,25 @@ def redeem_view(request,card_id):
 def staff_view(request):
     form=StaffCreateForm(request.POST or None)
     if request.method=='POST' and form.is_valid():
-        user=User.objects.create_user(form.cleaned_data['username'],password=form.cleaned_data['password']); user.profile.role=Profile.Role.STAFF; user.profile.must_change_password=True; user.profile.save()
+        user=User.objects.create_user(form.cleaned_data['username'],password=form.cleaned_data['password']); user.profile.role=Profile.Role.STAFF; user.profile.must_change_password=True
+        for field in ('can_activate_cards','can_redeem_cards','can_view_prices'): setattr(user.profile,field,form.cleaned_data[field])
+        user.profile.save()
         messages.success(request,f'Staff account {user.username} created. Share the initial password with them securely.')
         return redirect('staff')
-    return render(request,'giftcards/staff.html',{'form':form,'staff':User.objects.filter(profile__role='STAFF').order_by('username')})
+    return render(request,'giftcards/staff.html',{'form':form,'staff':User.objects.filter(profile__role='STAFF').select_related('profile').order_by('username')})
+
+@role_required('ADMIN')
+@require_POST
+def staff_permissions(request,user_id):
+    user=get_object_or_404(User,pk=user_id,profile__role=Profile.Role.STAFF)
+    form=StaffPermissionsForm(request.POST)
+    if form.is_valid():
+        for field in ('can_activate_cards','can_redeem_cards','can_view_prices'):
+            setattr(user.profile,field,form.cleaned_data[field])
+        user.profile.save(update_fields=['can_activate_cards','can_redeem_cards','can_view_prices'])
+        messages.success(request,f'Permissions updated for {user.username}.')
+    else: messages.error(request,'Could not update staff permissions.')
+    return redirect('staff')
 @role_required('ADMIN')
 @require_POST
 def staff_toggle(request,user_id):

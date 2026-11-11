@@ -59,8 +59,10 @@ class PriceListTests(TestCase):
         response=self.client.get(reverse('prices_worker'))
         self.assertEqual(response.status_code,200)
         self.assertEqual(response['Service-Worker-Allowed'],'/')
+        self.assertIn(b'/static/js/prices.js',response.content)
+        self.assertNotIn(b'__PRICE_STATIC_ASSETS__',response.content)
 
-    def test_bulk_add_is_all_or_nothing_and_names_are_title_case(self):
+    def test_bulk_add_saves_valid_items_and_skips_duplicates(self):
         self.client.force_login(self.admin)
         self.client.post(reverse('price_create'),{
             'name':['  silk   shirt  ','DENIM JACKET','linen trousers'],
@@ -68,19 +70,38 @@ class PriceListTests(TestCase):
         })
         self.assertEqual(list(PriceItem.objects.values_list('name',flat=True)),
                          ['Denim Jacket','Linen Trousers','Silk Shirt'])
-        self.client.post(reverse('price_create'),{
+        response=self.client.post(reverse('price_create'),{
             'name':['new cap','DENIM JACKET'], 'price':['5000','9000'],
-        })
-        self.assertFalse(PriceItem.objects.filter(name='New Cap').exists())
+        },follow=True)
+        self.assertTrue(PriceItem.objects.filter(name='New Cap').exists())
+        self.assertContains(response,'1 item added to the price list.')
+        self.assertContains(response,'1 duplicate item skipped: Denim Jacket.')
         self.client.post(reverse('price_create'),{
             'name':['belt','BELT'], 'price':['1000','1100'],
         })
-        self.assertFalse(PriceItem.objects.filter(name='Belt').exists())
+        self.assertEqual(PriceItem.objects.filter(name='Belt').count(),1)
+        self.assertEqual(str(PriceItem.objects.get(name='Belt').price),'1000.00')
+        self.client.post(reverse('price_create'),{
+            'name':['Canvas Bag','Broken Price'], 'price':['8500','-1'],
+        })
+        self.assertTrue(PriceItem.objects.filter(name='Canvas Bag').exists())
+        self.assertFalse(PriceItem.objects.filter(name='Broken Price').exists())
         self.client.force_login(self.staff)
         self.assertEqual(self.client.post(reverse('price_create'),{
             'name':['forbidden','another'], 'price':['1','2'],
         }).status_code,403)
-        self.assertEqual(PriceItem.objects.count(),3)
+        self.assertEqual(PriceItem.objects.count(),6)
+
+    def test_large_bulk_add_keeps_other_items_when_a_name_repeats(self):
+        self.client.force_login(self.admin)
+        names=[f'Item {number}' for number in range(41)]
+        names.insert(25,'item 5')
+        response=self.client.post(reverse('price_create'),{
+            'name':names,'price':['1000']*len(names),
+        },follow=True)
+        self.assertEqual(PriceItem.objects.count(),41)
+        self.assertContains(response,'41 items added to the price list.')
+        self.assertContains(response,'1 duplicate item skipped: Item 5.')
 
     def test_app_shell_has_refresh_and_signed_in_welcome(self):
         self.client.force_login(self.staff)
@@ -109,6 +130,51 @@ class PriceListTests(TestCase):
         self.assertNotContains(response,'price-admin-item')
 from .services import generate_cards, card_discount, activate, redeem
 from .views import qr_payload
+
+@override_settings(PASSWORD_HASHERS=['django.contrib.auth.hashers.MD5PasswordHasher'])
+class LoginFlowTests(TestCase):
+    def setUp(self):
+        self.staff=User.objects.create_user('login_staff',password='Strong-staff-pass-912!')
+        self.staff.profile.must_change_password=False
+        self.staff.profile.can_view_prices=False
+        self.staff.profile.save(update_fields=['must_change_password','can_view_prices'])
+
+    def test_saved_admin_and_unpermitted_destinations_open_staff_dashboard(self):
+        for destination in ('/staff/','/prices/'):
+            self.client.logout()
+            response=self.client.post(reverse('login')+'?next='+destination,{
+                'username':'LOGIN_STAFF','password':'Strong-staff-pass-912!'
+            })
+            self.assertRedirects(response,reverse('dashboard'),fetch_redirect_response=False)
+        self.staff.profile.can_view_prices=True
+        self.staff.profile.save(update_fields=['can_view_prices'])
+        self.client.logout()
+        response=self.client.post(reverse('login')+'?next=/prices/',{
+            'username':'login_staff','password':'Strong-staff-pass-912!'
+        })
+        self.assertRedirects(response,reverse('prices'),fetch_redirect_response=False)
+
+    def test_five_failures_show_reset_help_and_ten_lock_for_five_minutes(self):
+        url=reverse('login')
+        for attempt in range(1,11):
+            response=self.client.post(url,{'username':'LoGiN_StAfF','password':'incorrect'})
+            if attempt==1:
+                self.assertContains(response,'Incorrect username or password.')
+                self.assertNotContains(response,'case-sensitive')
+            if attempt==5:
+                self.assertContains(response,'Ask an admin to reset it.')
+                self.assertEqual(response.content.decode().count('Ask an admin to reset it.'),1)
+            if attempt==10:
+                self.assertEqual(response.status_code,429)
+                self.assertContains(response,'five minutes',status_code=429)
+                self.assertContains(response,'login-retry-countdown',status_code=429)
+                self.assertLessEqual(int(response['Retry-After']),300)
+        self.assertEqual(settings.AXES_FAILURE_LIMIT,10)
+        self.assertEqual(settings.AXES_COOLOFF_TIME,timedelta(minutes=5))
+        from axes.models import AccessAttempt
+        AccessAttempt.objects.update(attempt_time=timezone.now()-timedelta(minutes=5,seconds=1))
+        response=self.client.post(url,{'username':'login_staff','password':'Strong-staff-pass-912!'})
+        self.assertRedirects(response,reverse('dashboard'),fetch_redirect_response=False)
 
 @override_settings(PASSWORD_HASHERS=['django.contrib.auth.hashers.MD5PasswordHasher'])
 class GiftCardTests(TestCase):
@@ -145,7 +211,7 @@ class GiftCardTests(TestCase):
         self.assertFalse(AuditEvent.objects.filter(action='CARD_LOOKUP').exists())
     def test_admin_generation_endpoint_and_staff_denial(self):
         self.client.force_login(self.admin); r=self.client.post(reverse('generate'),{'kind':'N10','count':1}); self.assertEqual(r.status_code,200); self.assertEqual(GiftCard.objects.count(),1)
-        self.client.force_login(self.staff); self.assertEqual(self.client.get(reverse('generate')).status_code,403)
+        self.client.force_login(self.staff); self.assertRedirects(self.client.get(reverse('generate')),reverse('dashboard'),fetch_redirect_response=False)
     def test_staff_activates_card_and_records_times(self):
         c=self.card(); self.client.force_login(self.staff); r=self.client.post(reverse('activate',args=[c.id]),content_type='application/json',data='{"customer_phone":"+2347012345678"}')
         c.refresh_from_db(); self.assertEqual(r.status_code,200); self.assertEqual(c.status,'ACTIVE'); self.assertEqual(c.activated_by,self.staff); self.assertAlmostEqual((c.expires_at-c.activated_at).total_seconds(),60*86400,delta=1)
@@ -194,7 +260,7 @@ class GiftCardTests(TestCase):
         self.staff.refresh_from_db(); self.assertEqual(r.status_code,302); self.assertTrue(self.staff.check_password('New-very-strong-pass-783!')); self.assertFalse(self.staff.profile.must_change_password)
         self.assertFalse(AuditEvent.objects.filter(action='PASSWORD_CHANGED').exists())
     def test_staff_create_is_admin_only(self):
-        self.client.force_login(self.staff); self.assertEqual(self.client.get(reverse('staff')).status_code,403)
+        self.client.force_login(self.staff); self.assertRedirects(self.client.get(reverse('staff')),reverse('dashboard'),fetch_redirect_response=False)
         self.client.force_login(self.admin); r=self.client.post(reverse('staff'),{'username':'newstaff','password':'New-strong-password-492!'}); self.assertEqual(r.status_code,302)
         new=User.objects.get(username='newstaff'); self.assertTrue(new.profile.must_change_password); self.assertFalse(AuditEvent.objects.filter(action='STAFF_CREATED').exists())
     def test_deactivated_staff_cannot_keep_session(self):
@@ -216,7 +282,7 @@ class GiftCardTests(TestCase):
         self.staff.refresh_from_db(); self.assertEqual(response.status_code,302); self.assertTrue(self.staff.check_password(new)); self.assertTrue(self.staff.profile.must_change_password)
         self.assertFalse(AuditEvent.objects.filter(action='PASSWORD_RESET').exists())
     def test_staff_admin_route_denial_is_not_card_audit(self):
-        self.client.force_login(self.staff); self.assertEqual(self.client.get(reverse('generate')).status_code,403)
+        self.client.force_login(self.staff); self.assertRedirects(self.client.get(reverse('generate')),reverse('dashboard'),fetch_redirect_response=False)
         self.assertFalse(AuditEvent.objects.filter(action='ADMIN_ACCESS_DENIED').exists())
 
     def test_dashboard_and_scanner_templates_render(self):
@@ -312,6 +378,82 @@ class GiftCardTests(TestCase):
         c=self.card('N15','ACTIVE'); redeem(c.id,self.staff,'50000'); event=AuditEvent.objects.get(card=c,action='REDEMPTION')
         self.assertEqual(event.previous_state,'READY'); self.assertEqual(event.new_state,'REDEEMED'); self.assertEqual(event.outcome,'SUCCESS')
 
+
+    def test_staff_permissions_guard_pages_and_card_apis(self):
+        card=self.card(); self.client.force_login(self.staff)
+        profile=self.staff.profile
+        profile.can_activate_cards=False; profile.can_redeem_cards=False; profile.can_view_prices=False
+        profile.save(update_fields=['can_activate_cards','can_redeem_cards','can_view_prices'])
+        self.assertRedirects(self.client.get(reverse('scanner')),reverse('dashboard'),fetch_redirect_response=False)
+        self.assertEqual(self.client.post(reverse('card_lookup'),data={'code':card.code},content_type='application/json').status_code,403)
+        self.assertEqual(self.client.post(reverse('activate',args=[card.id]),data={'customer_phone':'+2347012345678'},content_type='application/json').status_code,403)
+        self.assertEqual(self.client.post(reverse('preview',args=[card.id]),data={'amount':'50000'},content_type='application/json').status_code,403)
+        self.assertEqual(self.client.post(reverse('redeem',args=[card.id]),data={'amount':'50000'},content_type='application/json').status_code,403)
+        self.assertRedirects(self.client.get(reverse('prices')),reverse('dashboard'),fetch_redirect_response=False)
+        self.assertEqual(self.client.get(reverse('prices_data')).status_code,403)
+        card.refresh_from_db(); self.assertEqual(card.status,GiftCard.Status.GENERATED)
+
+    def test_owner_assigns_and_changes_staff_permissions(self):
+        self.client.force_login(self.admin)
+        response=self.client.post(reverse('staff'),{'username':'limited','password':'New-strong-password-492!','can_activate_cards':'on'})
+        self.assertEqual(response.status_code,302)
+        user=User.objects.get(username='limited')
+        self.assertTrue(user.profile.can_activate_cards)
+        self.assertFalse(user.profile.can_redeem_cards)
+        self.assertFalse(user.profile.can_view_prices)
+        response=self.client.post(reverse('staff_permissions',args=[user.id]),{'can_redeem_cards':'on','can_view_prices':'on'})
+        self.assertEqual(response.status_code,302)
+        user.profile.refresh_from_db()
+        self.assertFalse(user.profile.can_activate_cards)
+        self.assertTrue(user.profile.can_redeem_cards)
+        self.assertTrue(user.profile.can_view_prices)
+        self.client.force_login(self.staff)
+        self.assertEqual(self.client.post(reverse('staff_permissions',args=[user.id]),{}).status_code,403)
+
+    def test_staff_with_one_card_permission_only_sees_its_action(self):
+        profile=self.staff.profile
+        profile.can_redeem_cards=False
+        profile.save(update_fields=['can_redeem_cards'])
+        generated=self.card()
+        ready=self.card('N10','ACTIVE')
+        self.client.force_login(self.staff)
+        self.assertEqual(self.client.get(reverse('scanner')).status_code,200)
+        lookup=self.client.post(reverse('card_lookup'),data={'code':generated.code},content_type='application/json')
+        self.assertTrue(lookup.json()['can_activate'])
+        self.assertFalse(lookup.json()['can_redeem'])
+        self.assertEqual(self.client.post(reverse('activate',args=[generated.id]),data={'customer_phone':'+2347012345678'},content_type='application/json').status_code,200)
+        self.assertEqual(self.client.post(reverse('preview',args=[ready.id]),data={'amount':'50000'},content_type='application/json').status_code,403)
+        self.assertEqual(self.client.post(reverse('redeem',args=[ready.id]),data={'amount':'50000'},content_type='application/json').status_code,403)
+        ready.refresh_from_db(); self.assertEqual(ready.status,GiftCard.Status.ACTIVE)
+
+    def test_performance_credits_activator_not_redeemer(self):
+        other=User.objects.create_user('other_staff')
+        self.card('N10','REDEEMED')
+        self.card('N15','ACTIVE')
+        card=self.card('N10','REDEEMED')
+        card.redeemed_by=other; card.save(update_fields=['redeemed_by'])
+        self.client.force_login(self.admin)
+        response=self.client.get(reverse('dashboard'))
+        person=next(person for person in response.context['staff_performance'] if person.pk==self.staff.pk)
+        self.assertEqual((person.total_activated,person.total_redeemed,person.redemption_rate),(3,2,66.7))
+        other_person=next(person for person in response.context['staff_performance'] if person.pk==other.pk)
+        self.assertEqual((other_person.total_activated,other_person.total_redeemed,other_person.redemption_rate),(0,0,0))
+
+    def test_performance_includes_admin_activations(self):
+        redeemed=self.card('N10','REDEEMED')
+        redeemed.activated_by=self.admin
+        redeemed.redeemed_by=self.staff
+        redeemed.save(update_fields=['activated_by','redeemed_by'])
+        active=self.card('N15','ACTIVE')
+        active.activated_by=self.admin
+        active.save(update_fields=['activated_by'])
+        self.client.force_login(self.admin)
+        response=self.client.get(reverse('dashboard'))
+        admin_row=next(person for person in response.context['staff_performance'] if person.pk==self.admin.pk)
+        self.assertEqual((admin_row.total_activated,admin_row.total_redeemed,admin_row.redemption_rate),(2,1,50.0))
+        self.assertContains(response,'Admin')
+        self.assertContains(response,'id="staff-performance"')
+        self.assertContains(response,'id="staff-performance-query"')
 
 class ConcurrentRedemptionTests(TransactionTestCase):
     @skipUnlessDBFeature('has_select_for_update')

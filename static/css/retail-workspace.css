@@ -163,12 +163,12 @@ input, select { min-height: 44px; padding: 10px 12px; border-color: var(--border
 .password-field { position: relative; display: block; width: 100%; min-width: 0; }
 .password-field > input { width: 100%; padding-right: 52px !important; }
 .password-visibility-toggle { position: absolute; top: 50%; right: 4px; transform: translateY(-50%); display: grid; place-items: center; width: 40px; height: 40px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--text-secondary); cursor: pointer; }
-.password-visibility-toggle:hover { color: var(--ink); background: var(--ivory); }
 .password-visibility-toggle:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
 .password-visibility-toggle svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .password-visibility-toggle .password-eye-slash { display: none; }
 .password-visibility-toggle[aria-pressed="true"] .password-eye-slash { display: block; }
 .inline .password-field { flex: 1 1 auto; }
+form .password-field > .password-visibility-toggle { width: 40px; min-width: 40px; max-width: 40px; height: 40px; min-height: 40px; margin: 0; padding: 0; border: 0; box-shadow: none; appearance: none; }
 input::placeholder { color: #827B70; }
 input:focus, select:focus { border-color: var(--gold); }
 .errorlist { font-size: 11px; }
@@ -575,4 +575,62 @@ tbody tr:hover td { background: #FBF9F4; }
 @media print {
   .activity-chart-section, .period-form { display: none !important; }
   .page { padding: 0; max-width: none; }
+}
+.staff-permissions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; min-width: 0; }
+.staff-permissions label { display: inline-flex; align-items: center; gap: 6px; margin: 0; white-space: nowrap; font-size: 12px; }
+.staff-permissions input[type="checkbox"] { flex: none; width: 18px; height: 18px; min-height: 0; margin: 0; padding: 0; accent-color: var(--gold-text); }
+.staff-permissions button { margin: 0; white-space: nowrap; }
+.staff-performance { margin-top: 24px; }
+.staff-performance > .muted { margin: 0 0 14px; }
+.staff-performance > summary { display: flex; justify-content: space-between; align-items: center; gap: 16px; cursor: pointer; list-style: none; }
+.staff-performance > summary::-webkit-details-marker { display: none; }
+.staff-performance > summary strong { display: block; margin-top: 4px; font-size: 20px; line-height: 1.25; }
+.staff-performance > summary:focus-visible { outline: 2px solid var(--gold-text); outline-offset: 5px; }
+.staff-performance-toggle::after { content: '−'; font-size: 22px; line-height: 1; }
+.staff-performance:not([open]) .staff-performance-toggle::after { content: '+'; }
+.staff-performance-content { padding-top: 16px; }
+.staff-performance-content > .muted { margin: 0 0 16px; }
+.staff-performance-search { display: block; max-width: 360px; margin-bottom: 16px; font-size: 12px; font-weight: 700; }
+.staff-performance-search input { display: block; width: 100%; margin-top: 6px; }
+.staff-performance-row[hidden] { display: none !important; }
+.staff-performance #staff-performance-no-match:not([hidden]) { display: block; }
+@media (max-width: 768px) {
+  .staff-performance { padding: 16px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--white); }
+  .staff-performance > summary strong { font-size: 16px; }
+  .staff-performance-content { padding-top: 12px; }
+  .staff-performance-content > .muted { font-size: 11px; line-height: 1.5; }
+  .staff-performance-search { max-width: none; }
+  .staff-performance .mobile-records tbody { gap: 7px; padding: 0; }
+  .staff-performance .mobile-records tr { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 6px 10px; padding: 10px 12px; }
+  .staff-performance .mobile-records td { position: static; min-height: 0; padding: 0; border: 0; font-size: 13px; }
+  .staff-performance .mobile-records td:first-child { grid-column: 1 / -1; padding: 0 0 7px; border-bottom: 1px solid var(--border-soft); }
+  .staff-performance .mobile-records td:first-child small { margin-left: 6px; color: var(--text-secondary); font-size: 10px; font-weight: 500; }
+  .staff-performance .mobile-records td[data-label]::before { position: static; display: block; width: auto; margin-bottom: 3px; font-size: 9px; font-weight: 600; }
+  .staff-performance .mobile-records td:first-child::before { display: none; }
+  .staff-performance .mobile-records td[colspan] { grid-column: 1 / -1; }
+}
+.staff-permission-choices { display: flex; flex-wrap: wrap; gap: 10px 18px; margin: 14px 0 20px; padding: 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.staff-permission-choices legend { padding: 0 5px; font-size: 12px; font-weight: 700; }
+.staff-permission-choices label { display: inline-flex; align-items: center; gap: 7px; margin: 0; font-size: 13px; }
+.staff-permission-choices input[type="checkbox"] { flex: none; width: 18px; height: 18px; min-height: 0; margin: 0; padding: 0; accent-color: var(--gold-text); }
+.login-card .login-help { margin: 14px 0; font-size: 12px; line-height: 1.5; }
+.login-card .login-retry { margin: 16px 0 8px; font-size: 13px; }
+.login-card .login-retry strong { color: var(--gold-text); font-variant-numeric: tabular-nums; }
+.login-card .login-support .forgot-placeholder { font-size: 11px; }
+@media (max-width: 600px) {
+  .staff-permission-choices { gap: 9px 14px; margin: 12px 0 14px; padding: 10px 12px; }
+  .staff-permission-choices label { min-height: 32px; font-size: 12px; }
+  .staff-roster .mobile-records tbody { padding: 0; }
+  .staff-roster .mobile-records tr { padding: 12px; }
+  .staff-roster .mobile-records td { min-height: 0; padding: 10px 0; }
+  .staff-roster .mobile-records td:first-child { padding: 0 0 9px; }
+  .staff-roster .mobile-records td[data-label]::before { position: static; display: block; width: auto; margin: 0 0 6px; }
+  .staff-roster .mobile-records td:first-child::before { display: none; }
+  .staff-roster .staff-permissions { gap: 8px 14px; }
+  .staff-roster .staff-permissions label { min-height: 30px; }
+  .staff-roster .staff-permissions button { min-height: 36px; }
+  .staff-roster .mobile-records .inline { gap: 7px; }
+  .staff-roster .mobile-records .inline input { flex: 1 1 170px; }
+  .staff-roster .mobile-records .inline button { margin: 0; }
+  .staff-roster td:last-child button { margin: 0; }
 }

@@ -36,6 +36,15 @@
     window.location.reload();
   });
 
+  if (document.body.classList.contains('app-page') && 'serviceWorker' in navigator && window.isSecureContext) {
+    const priceAccess = document.body.dataset.canViewPrices === 'true';
+    if (!priceAccess) { try { localStorage.removeItem('umerrick-price-list-v1'); } catch (_) {} }
+    navigator.serviceWorker.register('/pwa/prices-worker.js', { scope: '/' })
+      .then(() => navigator.serviceWorker.ready)
+      .then(registration => registration.active?.postMessage({ type: priceAccess ? 'CACHE_PRICE_PAGE' : 'CLEAR_PRICE_PAGE' }))
+      .catch(() => {});
+  }
+
   const welcome = document.querySelector('#app-welcome');
   const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
   document.querySelectorAll('form[action$="/accounts/logout/"]').forEach(form => {

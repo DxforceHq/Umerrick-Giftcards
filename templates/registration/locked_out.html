@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+{% block title %}Sign-in paused · U_MERRICK{% endblock %}
+{% block content %}
+<section class="login-wrap"><div class="login-card">
+  <div class="eyebrow">ACCOUNT SECURITY</div>
+  <h1>Sign-in paused</h1>
+  <p class="notice error" role="alert">Too many unsuccessful attempts. Sign-in is paused for five minutes.</p>
+  <p class="login-retry">Try again in <strong id="login-retry-countdown" data-seconds="{{ retry_after_seconds }}">{{ retry_after_seconds }} seconds</strong>.</p>
+  <p class="login-help">Forgot your password? Contact your administrator to reset it.</p>
+  <a class="secondary block" href="{% url 'login' %}">Return to sign in</a>
+</div></section>
+{% endblock %}
+{% block scripts %}<script>
+(() => {
+  const timer = document.querySelector('#login-retry-countdown');
+  if (!timer) return;
+  const seconds = Number(timer.dataset.seconds);
+  const deadline = performance.now() + seconds * 1000;
+  const update = () => {
+    const left = Math.max(0, Math.ceil((deadline - performance.now()) / 1000));
+    const minutes = Math.floor(left / 60);
+    const remainder = left % 60;
+    timer.textContent = left ? `${minutes}:${String(remainder).padStart(2, '0')}` : '0:00 — you can try again now';
+    if (!left) clearInterval(interval);
+  };
+  const interval = setInterval(update, 1000);
+  update();
+})();
+</script>{% endblock %}

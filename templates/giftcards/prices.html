@@ -36,4 +36,4 @@
 {% endif %}
 <div class="empty price-search-empty" id="price-search-empty" hidden>No matching items.</div>
 {% endblock %}
-{% block scripts %}<script id="price-config" type="application/json">{"dataUrl":"{% url 'prices_data' %}","staff":{% if admin_access %}false{% else %}true{% endif %}}</script><script src="{% static 'js/prices.js' %}?v=20261104-inline-price-editor" defer></script>{% endblock %}
+{% block scripts %}<script id="price-config" type="application/json">{"dataUrl":"{% url 'prices_data' %}","staff":{% if admin_access %}false{% else %}true{% endif %}}</script><script src="{% static 'js/prices.js' %}?v=20261109-offline-launch" defer></script>{% endblock %}
