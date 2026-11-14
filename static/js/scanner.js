@@ -147,10 +147,16 @@
       button.className = 'primary';
       button.textContent = 'Confirm activation';
       button.addEventListener('click', () => activate(card.id, phone.value, amount.value));
-      actions.append(phoneLabel, phoneEntry, amountLabel, amount, button);
+      const terms = document.createElement('a');
+      terms.href = '/gift-card-terms/';
+      terms.target = '_blank';
+      terms.rel = 'noopener noreferrer';
+      terms.className = 'activation-terms-link';
+      terms.textContent = 'Read Gift Card Terms & Conditions';
+      actions.append(phoneLabel, phoneEntry, amountLabel, amount, terms, button);
     } else if (card.status === 'READY' && card.can_redeem !== false) {
       const label = document.createElement('label');
-      label.textContent = 'Eligible purchase amount (₦)';
+      label.textContent = 'Amount spent at redemption (₦)';
       label.htmlFor = 'purchase-amount';
       const amount = document.createElement('input');
       amount.id = 'purchase-amount';

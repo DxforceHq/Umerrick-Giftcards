@@ -1,4 +1,18 @@
 {% extends 'base.html' %}{% block title %}Generate rewards · U_MERRICK{% endblock %}{% block content %}
 <header class="heading"><div><div class="eyebrow">PROMOTIONAL REWARDS</div><h1>Generate gift cards</h1><p>Create individual rewards or prepare a batch for customer loyalty.</p></div></header>
 <div class="generation-layout"><section class="generation-form"><p class="muted">These rewards are issued free of charge and are not products for sale. Staff activate cards at customer handoff.</p><form method="post">{% csrf_token %}{{ form.non_field_errors }}<label for="id_kind">Choose a reward</label>{{ form.kind }}{% if form.kind.errors %}{{ form.kind.errors }}{% endif %}<label for="id_count">Quantity <small>Up to 500 cards per batch</small></label>{{ form.count }}{% if form.count.errors %}{{ form.count.errors }}{% endif %}<button class="primary" type="submit">Generate and preview</button></form></section><aside><div class="section-head"><h2>Available reward types</h2></div><div class="reward-types"><div class="reward-type"><span><strong>₦10,000</strong><small>Fixed-value reward</small></span><span class="eyebrow">01</span></div><div class="reward-type"><span><strong>₦15,000</strong><small>Fixed-value reward</small></span><span class="eyebrow">02</span></div><div class="reward-type"><span><strong>10% off</strong><small>One-time purchase discount</small></span><span class="eyebrow">03</span></div></div><div class="note"><strong>Activation starts the validity window.</strong><br>Each card becomes redeemable after 72 hours and expires 60 days after activation.</div></aside></div>
+<section class="batch-history" aria-labelledby="batch-history-title">
+  <div class="batch-history-head"><div><div class="eyebrow">BATCH ARCHIVE</div><h2 id="batch-history-title">Previous batches</h2><p>Open any batch again to print or save the same cards as a PDF.</p></div><span class="batch-history-count">{{ batch_page.paginator.count }} batch{{ batch_page.paginator.count|pluralize:"es" }}</span></div>
+  {% if batch_page.object_list %}
+  <ul class="batch-history-list">
+    {% for batch in batch_page %}
+    <li class="batch-history-item">
+      <div class="batch-history-info"><strong>{% if batch.kind == 'N10' %}₦10,000{% elif batch.kind == 'N15' %}₦15,000{% else %}10% off{% endif %}</strong><span>{{ batch.generated_at|date:'j M Y, g:i A' }} · {{ batch.card_count }} card{{ batch.card_count|pluralize }} · {{ batch.created_by__username }}</span></div>
+      <a class="secondary batch-history-open" href="{% url 'batch_print' batch.batch_id %}">Open batch</a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% if batch_page.has_other_pages %}<nav class="batch-history-pages" aria-label="Batch history pages"><span>Page {{ batch_page.number }} of {{ batch_page.paginator.num_pages }}</span><div>{% if batch_page.has_previous %}<a class="secondary" href="?page={{ batch_page.previous_page_number }}#batch-history-title">Previous</a>{% endif %}{% if batch_page.has_next %}<a class="secondary" href="?page={{ batch_page.next_page_number }}#batch-history-title">Next</a>{% endif %}</div></nav>{% endif %}
+  {% else %}<p class="batch-history-empty">No batches have been generated yet.</p>{% endif %}
+</section>
 {% endblock %}

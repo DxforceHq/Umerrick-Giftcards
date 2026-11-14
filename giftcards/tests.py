@@ -1,4 +1,5 @@
 import threading, uuid
+from urllib.parse import parse_qs, urlparse
 from decimal import Decimal
 from datetime import datetime, time, timedelta, timezone as datetime_timezone
 from zoneinfo import ZoneInfo
@@ -212,6 +213,39 @@ class GiftCardTests(TestCase):
     def test_admin_generation_endpoint_and_staff_denial(self):
         self.client.force_login(self.admin); r=self.client.post(reverse('generate'),{'kind':'N10','count':1}); self.assertEqual(r.status_code,200); self.assertEqual(GiftCard.objects.count(),1)
         self.client.force_login(self.staff); self.assertRedirects(self.client.get(reverse('generate')),reverse('dashboard'),fetch_redirect_response=False)
+    def test_admin_can_reopen_previous_batch_from_generate_page(self):
+        first=generate_cards(self.admin,'N15',3)
+        second=generate_cards(self.admin,'PCT10',2)
+        first[0].refresh_from_db(); second[0].refresh_from_db()
+        self.client.force_login(self.admin)
+        self.client.get(reverse('dashboard'))
+        response=self.client.get(reverse('generate'))
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(response.context['batch_page'].paginator.count,2)
+        self.assertContains(response,reverse('batch_print',args=[first[0].batch_id]))
+        self.assertContains(response,reverse('batch_print',args=[second[0].batch_id]))
+        self.assertContains(response,'3 cards')
+        print_response=self.client.get(reverse('batch_print',args=[first[0].batch_id]))
+        for card in first: self.assertContains(print_response,card.code)
+        for card in second: self.assertNotContains(print_response,card.code)
+    def test_batch_print_groups_complete_card_pairs_on_pages(self):
+        cards=generate_cards(self.admin,'PCT10',7)
+        cards[0].refresh_from_db()
+        self.client.force_login(self.admin)
+        response=self.client.get(reverse('batch_print',args=[cards[0].batch_id]))
+        self.assertEqual(response.status_code,200)
+        html=response.content.decode()
+        self.assertEqual(html.count('class="print-page"'),3)
+        self.assertEqual(html.count('class="card-sheet"'),7)
+        for card in cards:
+            self.assertEqual(html.count(card.code+' ·'),1)
+    def test_batch_history_is_paginated(self):
+        for _ in range(13): generate_cards(self.admin,'N10',1)
+        self.client.force_login(self.admin)
+        first=self.client.get(reverse('generate'))
+        second=self.client.get(reverse('generate'),{'page':2})
+        self.assertEqual(len(first.context['batch_page'].object_list),12)
+        self.assertEqual(len(second.context['batch_page'].object_list),1)
     def test_staff_activates_card_and_records_times(self):
         c=self.card(); self.client.force_login(self.staff); r=self.client.post(reverse('activate',args=[c.id]),content_type='application/json',data='{"customer_phone":"+2347012345678"}')
         c.refresh_from_db(); self.assertEqual(r.status_code,200); self.assertEqual(c.status,'ACTIVE'); self.assertEqual(c.activated_by,self.staff); self.assertAlmostEqual((c.expires_at-c.activated_at).total_seconds(),60*86400,delta=1)
@@ -258,6 +292,19 @@ class GiftCardTests(TestCase):
     def test_staff_can_change_authenticated_password(self):
         self.client.force_login(self.staff); r=self.client.post(reverse('password_change'),{'old_password':'Strong-staff-pass-912!','new_password1':'New-very-strong-pass-783!','new_password2':'New-very-strong-pass-783!'})
         self.staff.refresh_from_db(); self.assertEqual(r.status_code,302); self.assertTrue(self.staff.check_password('New-very-strong-pass-783!')); self.assertFalse(self.staff.profile.must_change_password)
+
+    def test_first_password_change_offers_home_screen_install_once(self):
+        self.staff.profile.must_change_password=True
+        self.staff.profile.save(update_fields=['must_change_password'])
+        self.client.force_login(self.staff)
+        response=self.client.post(reverse('password_change'),{
+            'old_password':'Strong-staff-pass-912!',
+            'new_password1':'New-very-strong-pass-783!',
+            'new_password2':'New-very-strong-pass-783!',
+        },follow=True)
+        self.assertContains(response,'id="app-install"')
+        self.assertContains(response,'Add U_MERRICK to your Home Screen')
+        self.assertNotContains(self.client.get(reverse('dashboard')),'id="app-install"')
         self.assertFalse(AuditEvent.objects.filter(action='PASSWORD_CHANGED').exists())
     def test_staff_create_is_admin_only(self):
         self.client.force_login(self.staff); self.assertRedirects(self.client.get(reverse('staff')),reverse('dashboard'),fetch_redirect_response=False)
@@ -295,6 +342,80 @@ class GiftCardTests(TestCase):
         self.client.force_login(self.admin)
         for page in ('cards','staff','audit'): self.assertEqual(self.client.get(reverse(page)).status_code,200)
         self.assertEqual(self.client.get(reverse('report_csv')).status_code,200)
+    def test_gift_card_terms_are_public_and_printed_notice_is_present(self):
+        self.client.logout()
+        response=self.client.get(reverse('gift_card_terms'))
+        self.assertEqual(response.status_code,200)
+        self.assertContains(response,'Terms &amp; Conditions of Use')
+        self.assertContains(response,'Gift Card Reminders and Notifications')
+        self.client.force_login(self.admin)
+        card=self.card('N10')
+        print_response=self.client.get(reverse('card_print',args=[card.id]))
+        self.assertContains(print_response,'Terms &amp; Conditions Apply.')
+    def test_existing_signed_qr_sends_customer_to_public_status(self):
+        card=self.card('N15','ACTIVE',hours=80)
+        card.customer_phone='+2347012345678'
+        card.activation_purchase_amount=Decimal('50000.00')
+        card.save(update_fields=['customer_phone','activation_purchase_amount'])
+        token=parse_qs(urlparse(qr_payload(RequestFactory().get('/scan/'),card)).query)['token'][0]
+        self.client.logout()
+        redirect_response=self.client.get(reverse('scanner'),{'token':token})
+        self.assertEqual(redirect_response.status_code,302)
+        self.assertTrue(redirect_response['Location'].startswith(reverse('public_card_status')+'?token='))
+        response=self.client.get(redirect_response['Location'],REMOTE_ADDR='192.0.2.31')
+        self.assertContains(response,'Ready to redeem')
+        self.assertContains(response,'₦15,000')
+        self.assertContains(response,'Check another card')
+        self.assertNotContains(response,'id="public-scan-preview"')
+        self.assertNotContains(response,'id="gift-code"')
+        self.assertNotContains(response,card.customer_phone)
+        self.assertNotContains(response,'50000.00')
+        self.assertNotContains(response,card.code)
+        self.assertEqual(response['Cache-Control'],'no-store')
+        card.refresh_from_db()
+        self.assertEqual(card.status,GiftCard.Status.ACTIVE)
+    def test_public_manual_code_reports_waiting_and_rejects_unknown(self):
+        card=self.card('N10','ACTIVE',hours=1)
+        self.client.logout()
+        response=self.client.post(reverse('public_card_status'),{'code':card.code},REMOTE_ADDR='192.0.2.32')
+        self.assertContains(response,'Waiting period')
+        self.assertContains(response,reverse('gift_card_terms'))
+        self.assertContains(response,'You can redeem it from')
+        invalid=self.client.post(reverse('public_card_status'),{'code':'ABCD-EFGH-JKLM-NPQR'},REMOTE_ADDR='192.0.2.32')
+        self.assertContains(invalid,'We couldn’t verify that card.')
+        self.assertNotContains(invalid,'href="'+reverse('gift_card_terms')+'"')
+        self.assertContains(invalid,'id="public-scan-preview"')
+        self.assertContains(invalid,'id="gift-code"')
+    def test_public_status_rejects_tampered_token(self):
+        card=self.card()
+        token=parse_qs(urlparse(qr_payload(RequestFactory().get('/scan/'),card)).query)['token'][0]
+        response=self.client.get(reverse('public_card_status'),{'token':token+'x'},REMOTE_ADDR='192.0.2.33')
+        self.assertContains(response,'We couldn’t verify that card.')
+    def test_public_camera_qr_uses_server_verification(self):
+        card=self.card('N15','ACTIVE',hours=80)
+        qr=qr_payload(RequestFactory().get('/scan/'),card)
+        self.client.logout()
+        response=self.client.post(reverse('public_card_status'),{'qr':qr},REMOTE_ADDR='192.0.2.36')
+        self.assertContains(response,'Ready to redeem')
+        self.assertNotContains(response,'public-status-scanner.js')
+        invalid=self.client.post(reverse('public_card_status'),{'qr':qr+'x'},REMOTE_ADDR='192.0.2.36')
+        self.assertContains(invalid,'We couldn’t verify that card.')
+        legacy=self.client.post(reverse('public_card_status'),{'qr':f'/scan/?card={card.id}'},REMOTE_ADDR='192.0.2.36')
+        self.assertContains(legacy,'We couldn’t verify that card.')
+        self.assertEqual(GiftCard.objects.get(pk=card.pk).status,GiftCard.Status.ACTIVE)
+    def test_public_status_honours_expiry_and_single_use(self):
+        expired=self.card('N10','ACTIVE',hours=80,expiry_days=-1)
+        redeemed=self.card('PCT10','REDEEMED')
+        self.assertContains(self.client.post(reverse('public_card_status'),{'code':expired.code},REMOTE_ADDR='192.0.2.34'),'Expired')
+        self.assertContains(self.client.post(reverse('public_card_status'),{'code':redeemed.code},REMOTE_ADDR='192.0.2.34'),'Redeemed')
+        self.assertFalse(AuditEvent.objects.exists())
+    def test_public_lookup_is_rate_limited(self):
+        card=self.card()
+        for _ in range(30):
+            response=self.client.post(reverse('public_card_status'),{'code':card.code},REMOTE_ADDR='192.0.2.35')
+            self.assertContains(response,'Not yet activated')
+        limited=self.client.post(reverse('public_card_status'),{'code':card.code},REMOTE_ADDR='192.0.2.35')
+        self.assertContains(limited,'Too many checks')
     def test_dashboard_chart_uses_each_operation_timestamp_in_selected_period(self):
         today=timezone.localdate()
         earlier=self.card('N10','ACTIVE',hours=1)

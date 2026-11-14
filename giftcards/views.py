@@ -1,15 +1,17 @@
-import base64, io, json, uuid
+import base64, hashlib, io, json, re, uuid
 from datetime import date, datetime, time, timedelta, timezone as datetime_timezone
 from zoneinfo import ZoneInfo
 from urllib.parse import parse_qs, urlencode, urlparse
 from django.conf import settings
+from django.core.cache import cache
 from django.core import signing
 from django.contrib import messages
 from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import PasswordChangeForm
 from django.contrib.auth.models import User
-from django.db.models import Count, Q
+from django.db.models import Count, Min, Q
+from django.core.paginator import Paginator
 from django.db import transaction
 from django.http import Http404, JsonResponse, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -195,6 +197,7 @@ def activity_chart(start,end):
 
 @role_required('ADMIN','STAFF')
 def dashboard(request):
+    show_install_prompt=request.session.pop('offer_home_screen_install',False)
     if is_admin(request.user):
         period,start,end,period_error=dashboard_period(request)
         cards=filter_local_dates(GiftCard.objects.all(),'created_at',start,end)
@@ -212,12 +215,12 @@ def dashboard(request):
             person.redemption_rate=round(100*person.total_redeemed/person.total_activated,1) if person.total_activated else 0
             performance.append(person)
         return render(request,'giftcards/dashboard_admin.html',{'stats':stats,'recent':recent[:10],
-            'staff_performance':performance,
+            'staff_performance':performance,'show_install_prompt':show_install_prompt,
             'by_kind':cards.values('kind').annotate(total=Count('id')),'from_filter':start.isoformat(),
             'to_filter':end.isoformat(),'period':period,'period_error':period_error,
             'period_label':f'{start:%b} {start.day}, {start:%Y} – {end:%b} {end.day}, {end:%Y}',
             'chart':activity_chart(start,end)})
-    return render(request,'giftcards/dashboard_staff.html',{'operations':AuditEvent.objects.filter(actor=request.user,action__in=CARD_AUDIT_ACTIONS).select_related('card')[:12]})
+    return render(request,'giftcards/dashboard_staff.html',{'operations':AuditEvent.objects.filter(actor=request.user,action__in=CARD_AUDIT_ACTIONS).select_related('card')[:12],'show_install_prompt':show_install_prompt})
 @role_required('ADMIN')
 def generate_view(request):
     form=GenerateForm(request.POST or None)
@@ -225,7 +228,12 @@ def generate_view(request):
         try: cards=generate_cards(request.user,form.cleaned_data['kind'],form.cleaned_data['count'])
         except ValueError as exc: form.add_error(None,str(exc))
         else: return render(request,'giftcards/print_cards.html',{'cards':cards,'created':True})
-    return render(request,'giftcards/generate.html',{'form':form})
+    batches=(GiftCard.objects.order_by()
+             .values('batch_id','kind','created_by__username')
+             .annotate(card_count=Count('id'),generated_at=Min('created_at'))
+             .order_by('-generated_at'))
+    batch_page=Paginator(batches,12).get_page(request.GET.get('page'))
+    return render(request,'giftcards/generate.html',{'form':form,'batch_page':batch_page})
 @role_required('ADMIN')
 def cards_view(request):
     cards=GiftCard.objects.select_related('created_by','activated_by','redeemed_by').all()
@@ -273,7 +281,59 @@ def card_qr(request,card_id):
     image=qrcode.make(payload); buffer=io.BytesIO(); image.save(buffer,format='PNG')
     return HttpResponse(buffer.getvalue(),content_type='image/png')
 @role_required('ADMIN','STAFF',any_permission=('can_activate_cards','can_redeem_cards'))
-def scanner(request): return render(request,'giftcards/scanner.html')
+def staff_scanner(request): return render(request,'giftcards/scanner.html')
+
+def scanner(request):
+    """Keep existing printed /scan/ QR URLs useful to customers and staff."""
+    if request.user.is_authenticated:
+        return staff_scanner(request)
+    token=request.GET.get('token','')
+    destination=reverse('public_card_status')
+    if token:
+        destination+=f"?{urlencode({'token':token})}"
+    return redirect(destination)
+
+def public_card_status(request):
+    card=None
+    attempted=False
+    invalid=False
+    limited=False
+    if request.method == 'POST' or request.GET.get('token'):
+        attempted=True
+        remote_address=request.META.get('REMOTE_ADDR','unknown')
+        key='public-card-lookup:'+hashlib.sha256(remote_address.encode()).hexdigest()
+        cache.add(key,0,300)
+        try:
+            limited=cache.incr(key)>30
+        except ValueError:
+            limited=True
+        if not limited:
+            if request.method == 'POST':
+                qr_value=request.POST.get('qr')
+                if qr_value is not None:
+                    if isinstance(qr_value,str) and len(qr_value)<=2048 and 'token' in parse_qs(urlparse(qr_value).query):
+                        card=card_from_qr_payload(qr_value)
+                else:
+                    code=str(request.POST.get('code','')).strip().upper()
+                    if re.fullmatch(r'[A-Z0-9]{4}(?:-[A-Z0-9]{4}){3}',code):
+                        card=GiftCard.objects.filter(code=code).first()
+            else:
+                token=request.GET.get('token','')
+                if len(token)<=512:
+                    card=card_from_qr_payload(f"{reverse('scanner')}?{urlencode({'token':token})}")
+            invalid=card is None
+    response=render(request,'giftcards/public_status.html',{
+        'card':card,'attempted':attempted,'invalid':invalid,'limited':limited,
+        'status':card.display_status if card else None,
+    })
+    response['Cache-Control']='no-store'
+    response['Referrer-Policy']='no-referrer'
+    response['X-Robots-Tag']='noindex, nofollow'
+    return response
+
+def gift_card_terms(request):
+    return render(request, 'giftcards/terms.html')
+
 def card_json(card):
     return {'id':str(card.id),'code':card.code,'kind':card.get_kind_display(),'status':card.display_status,'activated_at':card.activated_at.isoformat() if card.activated_at else None,'eligible_at':card.eligible_at.isoformat() if card.eligible_at else None,'expires_at':card.expires_at.isoformat() if card.expires_at else None,'value':str(card.value) if card.value is not None else None,'activation_purchase_amount':str(card.activation_purchase_amount) if card.activation_purchase_amount is not None else None,'server_now':database_now().isoformat()}
 @role_required('ADMIN','STAFF',any_permission=('can_activate_cards','can_redeem_cards'))
@@ -393,7 +453,9 @@ def staff_reset(request,user_id):
 def password_change(request):
     form=PasswordChangeForm(request.user,request.POST or None)
     if request.method=='POST' and form.is_valid():
+        first_change=request.user.profile.must_change_password
         user=form.save(); user.profile.must_change_password=False; user.profile.save(update_fields=['must_change_password']); update_session_auth_hash(request,user)
+        if first_change: request.session['offer_home_screen_install']=True
         messages.success(request,'Password updated.'); return redirect('dashboard')
     return render(request,'registration/password_change.html',{'form':form})
 @role_required('ADMIN')

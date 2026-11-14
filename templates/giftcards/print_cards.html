@@ -6,12 +6,13 @@
   <div>
     <div class="eyebrow">PRINT PREVIEW</div>
     <h1>Gift cards ready</h1>
-    <p class="muted">{{ cards|length }} cards · Print or save as PDF.</p>
+    <p class="muted">{{ cards|length }} cards · Print or save as PDF. Use actual size (100%) on A4 or US Letter paper.</p>
   </div>
   <button class="primary" onclick="window.print()">Print / Save PDF</button>
 </div>
 <div class="print-grid">
   {% for card in cards %}
+  {% if forloop.counter0|divisibleby:3 %}<div class="print-page">{% endif %}
   <article class="card-sheet">
     <div class="gift-front">
       <img class="card-logo" src="{% static 'brand/umerrick-logo-cutout.png' %}" alt="U_MERRICK logo">
@@ -27,6 +28,7 @@
       <div class="back-copy">
         <p>Redeemable only at U_MERRICK for purchases.</p>
         <p>Activated after 72 hours and valid for 60 days.</p>
+        <p>Terms &amp; Conditions Apply.</p>
       </div>
       <img class="qr" src="{% url 'card_qr' card.id %}" alt="Unique QR code">
       <div class="gift-code">{{ card.code }}</div>
@@ -34,6 +36,7 @@
     </div>
     <div class="no-print card-meta">{{ card.code }} · {{ card.get_kind_display }}</div>
   </article>
+  {% if forloop.counter|divisibleby:3 or forloop.last %}</div>{% endif %}
   {% endfor %}
 </div>
 {% endblock %}

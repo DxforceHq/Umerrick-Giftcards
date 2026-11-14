@@ -1,4 +1,5 @@
 {% extends 'base.html' %}{% block title %}Sign in · U_MERRICK{% endblock %}{% block content %}<section class="login-wrap"><div class="login-card">
     <div class="eyebrow">PRIVATE REWARDS PORTAL</div><h1>Welcome back</h1>
    <form method="post">{% csrf_token %}{{ form.non_field_errors }}{% if contact_admin_hint %}<p class="notice login-help" role="status">Forgot your password? Ask an admin to reset it.</p>{% endif %}
-    <label for="id_username">Username</label>{{ form.username }}<label for="id_password">Password</label>{{ form.password }}<div class="login-support"><button class="forgot-placeholder" type="button" disabled title="Password recovery is coming soon">Forgot password?</button></div><button class="primary full" type="submit">Sign in</button></form></div></section>{% endblock %}
+    <label for="id_username">Username</label>{{ form.username }}<label for="id_password">Password</label>{{ form.password }}<div class="login-support"><button class="forgot-placeholder" type="button" disabled title="Password recovery is coming soon">Forgot password?</button></div><button class="primary full" type="submit">Sign in</button></form>
+<p class="login-terms"><a href="{% url 'gift_card_terms' %}">Gift Card Terms &amp; Conditions</a></p></div></section>{% endblock %}

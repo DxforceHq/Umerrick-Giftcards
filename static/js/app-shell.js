@@ -47,6 +47,56 @@
 
   const welcome = document.querySelector('#app-welcome');
   const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  const installPanel = document.querySelector('#app-install');
+  if (installPanel && !standalone) {
+    const action = installPanel.querySelector('#app-install-action');
+    const dismiss = installPanel.querySelector('#app-install-dismiss');
+    const instructions = installPanel.querySelector('#app-install-instructions');
+    const shell = document.querySelector('.app-shell');
+    let installEvent = null;
+    let previousFocus = null;
+    const iphone = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    instructions.textContent = iphone
+      ? 'Tap Share in your browser, then Add to Home Screen.'
+      : 'If Install app is unavailable, use your browser menu to add this site to your Home Screen.';
+    const close = () => {
+      installPanel.hidden = true;
+      if (shell) shell.inert = false;
+      previousFocus?.focus({preventScroll: true});
+    };
+    window.addEventListener('beforeinstallprompt', event => {
+      event.preventDefault();
+      installEvent = event;
+      action.hidden = false;
+      instructions.textContent = 'Install U_MERRICK for quick access from your Home Screen.';
+    });
+    window.addEventListener('appinstalled', close);
+    action.addEventListener('click', async () => {
+      if (!installEvent) return;
+      const event = installEvent;
+      installEvent = null;
+      action.disabled = true;
+      event.prompt();
+      try { await event.userChoice; } catch (_) { /* The browser keeps control of installation. */ }
+      close();
+    });
+    dismiss.addEventListener('click', close);
+    installPanel.addEventListener('keydown', event => {
+      if (event.key === 'Escape') { event.preventDefault(); close(); }
+      if (event.key !== 'Tab') return;
+      const buttons = [action, dismiss].filter(button => !button.hidden);
+      if (event.shiftKey && document.activeElement === buttons[0]) {
+        event.preventDefault(); buttons.at(-1).focus();
+      } else if (!event.shiftKey && document.activeElement === buttons.at(-1)) {
+        event.preventDefault(); buttons[0].focus();
+      }
+    });
+    previousFocus = document.activeElement;
+    installPanel.hidden = false;
+    if (shell) shell.inert = true;
+    dismiss.focus({preventScroll: true});
+  }
   document.querySelectorAll('form[action$="/accounts/logout/"]').forEach(form => {
     form.addEventListener('submit', () => {
       try { sessionStorage.removeItem('umerrick-welcome-seen'); } catch (_) { /* Sign-out still proceeds. */ }

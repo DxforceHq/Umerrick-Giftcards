@@ -1,0 +1,71 @@
+{% load static tz %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1C1C1C">
+  <title>Check your gift card · U_MERRICK</title>
+  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=20261111-status-result">
+</head>
+<body class="public-card-page">
+  <header class="public-card-header"><img src="{% static 'brand/umerrick-logo-cutout.png' %}" alt="U_MERRICK — ICONIC FITS"><span>ICONIC FITS · REWARDS</span></header>
+  <main class="public-card-main">
+    <div class="eyebrow">GIFT CARD STATUS</div>
+    {% if card %}
+    <h1>Your gift card</h1>
+    {% else %}
+    <h1>Check your gift card</h1>
+    <p class="public-card-lead">Scan the QR code or enter the code printed on your card to see when your reward is ready to use.</p>
+    {% if limited %}<div class="public-card-message" role="alert">Too many checks from this connection. Please try again in five minutes.</div>
+    {% elif invalid %}<div class="public-card-message" role="alert">We couldn’t verify that card. Scan it again, enter the printed code, or ask U_MERRICK staff for help.</div>{% endif %}
+
+    <section class="public-scan" aria-labelledby="public-scan-title">
+      <div class="public-scan-heading"><h2 id="public-scan-title">Scan your card</h2><span>QR CODE</span></div>
+      <div class="public-scan-preview" id="public-scan-preview"><span id="public-scan-placeholder">Your camera preview will appear here</span></div>
+      <p id="public-scan-message" role="status">Point your camera at the QR code on your gift card.</p>
+      <button id="public-scan-button" class="primary" type="button">Scan QR code</button>
+    </section>
+    <form id="public-qr-form" method="post" action="{% url 'public_card_status' %}" hidden>
+      {% csrf_token %}<input type="hidden" name="qr" id="public-qr-value">
+    </form>
+    <div class="public-scan-divider">Or enter the printed code</div>
+
+    <form class="public-card-form" method="post" action="{% url 'public_card_status' %}">
+      {% csrf_token %}
+      <label for="gift-code">Gift card code</label>
+      <input id="gift-code" name="code" type="text" placeholder="ABCD-EFGH-JKLM-NPQR" maxlength="19" autocomplete="off" autocapitalize="characters" spellcheck="false" required>
+      <button class="primary" type="submit">Check status</button>
+    </form>
+
+    <p class="public-card-help">Card status is checked against U_MERRICK records. Scanning or checking a card does not redeem it.</p>
+    {% endif %}
+
+    {% if card %}
+    <section class="public-card-result" aria-labelledby="status-heading">
+      <div class="public-card-result-top"><span class="eyebrow">U_MERRICK GIFT CARD</span><span class="public-card-code">Ending {{ card.code|slice:'-4:' }}</span></div>
+      <h2 id="status-heading">{{ card.get_kind_display }} reward</h2>
+      <div class="public-status public-status-{{ status|lower }}">
+        {% if status == 'GENERATED' %}Not yet activated
+        {% elif status == 'WAITING' %}Waiting period
+        {% elif status == 'READY' %}Ready to redeem
+        {% elif status == 'REDEEMED' %}Redeemed
+        {% elif status == 'EXPIRED' %}Expired
+        {% else %}Unavailable{% endif %}
+      </div>
+      {% if status == 'GENERATED' %}<p>Ask U_MERRICK staff to activate your card when it is handed to you. The 72-hour waiting period begins at activation.</p>
+      {% elif status == 'WAITING' %}<p>Your card is activated. You can redeem it from <strong>{{ card.eligible_at|localtime|date:'j M Y, g:i A' }} (Lagos time)</strong>.</p><p>It expires on {{ card.expires_at|localtime|date:'j M Y, g:i A' }} (Lagos time).</p>
+      {% elif status == 'READY' %}<p>Your reward is ready to use in store. Present your card before <strong>{{ card.expires_at|localtime|date:'j M Y, g:i A' }} (Lagos time)</strong>.</p>
+      {% elif status == 'REDEEMED' %}<p>This card has already been used and cannot be redeemed again.</p>
+      {% elif status == 'EXPIRED' %}<p>This card passed its expiry time and can no longer be redeemed.</p>
+      {% else %}<p>This card is unavailable for redemption. Ask U_MERRICK staff if you need help.</p>{% endif %}
+      <p class="public-card-terms"><a class="public-terms-link" href="{% url 'gift_card_terms' %}">Gift Card Terms &amp; Conditions</a></p>
+    </section>
+    <a class="public-check-another" href="{% url 'public_card_status' %}">Check another card</a>
+    {% endif %}
+  </main>
+  <footer class="public-card-footer">U_MERRICK — ICONIC FITS · Rewards designed to be enjoyed.</footer>
+  {% if not card %}<script src="{% static 'vendor/jsQR.js' %}" defer></script>
+  <script src="{% static 'js/public-status-scanner.js' %}?v=20261111-1" defer></script>{% endif %}
+</body>
+</html>
