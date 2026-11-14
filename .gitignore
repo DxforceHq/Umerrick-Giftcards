@@ -16,4 +16,4 @@ passenger_wsgi.py
 manage.py
 
 # personal file
-umerrick.zip
+*.zip
