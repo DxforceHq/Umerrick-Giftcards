@@ -487,18 +487,18 @@ form .inline button, .filters button, .staff-actions button { margin-top: 0; }
   .auth-content { min-height: calc(100vh - 86px); padding: 34px 24px; }
 }
 @media print {
-  @page { size: auto; margin: 10mm; }
+  @page { size: A4; margin: 10mm; }
   :root[data-theme="dark"] { color-scheme: light; background: #fff; }
   body { background: #fff; }
   .sidebar, .topbar, .camera-access, .site-footer, .no-print, .card-meta { display: none !important; }
   .workspace { width: 100%; margin: 0; }
   .page { width: 100%; max-width: none; min-height: 0; margin: 0; padding: 0; }
   .print-grid { display: block; width: 100%; }
-  .print-page { display: block; break-after: page; page-break-after: always; }
+  .print-page { display: block; height: 260mm; padding-top: 73.5mm; box-sizing: border-box; break-after: page; page-break-after: always; }
   .print-page:last-child { break-after: auto; page-break-after: auto; }
-  .card-sheet { display: block; width: 176.2mm; height: 54mm; margin: 0 auto 6mm; padding: 0; overflow: visible; white-space: nowrap; font-size: 0; break-inside: avoid-page; page-break-inside: avoid; }
+  .card-sheet { display: block; width: 85.6mm; height: 113mm; margin: 0 auto; padding: 0; overflow: visible; break-inside: avoid-page; page-break-inside: avoid; }
   .card-sheet:last-child { margin-bottom: 0; }
-  .gift-front, .gift-back { display: inline-block; width: 85.6mm; height: 54mm; vertical-align: top; white-space: normal; box-shadow: none; }
-  .gift-back { margin-left: 5mm; }
+  .gift-front, .gift-back { display: block; width: 85.6mm; height: 54mm; box-shadow: none; }
+  .gift-back { margin-top: 5mm; margin-left: 0; }
   .card-sheet:after { display: none; }
 }
