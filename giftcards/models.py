@@ -64,6 +64,19 @@ class Redemption(models.Model):
     payable_amount=models.DecimalField(max_digits=12,decimal_places=2)
     created_at=models.DateTimeField(default=timezone.now)
     class Meta: constraints=[models.CheckConstraint(condition=models.Q(purchase_amount__gte=0)&models.Q(discount_amount__gte=0)&models.Q(payable_amount__gte=0),name='redemption_amounts_nonnegative')]
+class CardReminder(models.Model):
+    class Stage(models.TextChoices):
+        FIRST='FIRST','First reminder'
+        SECOND='SECOND','Second reminder'
+        FINAL='FINAL','Expiry reminder'
+    card=models.ForeignKey(GiftCard,on_delete=models.PROTECT,related_name='reminders')
+    stage=models.CharField(max_length=6,choices=Stage.choices)
+    sent_at=models.DateTimeField(default=timezone.now)
+    sent_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='card_reminders_sent')
+    message=models.TextField()
+    class Meta:
+        ordering=['sent_at']
+        constraints=[models.UniqueConstraint(fields=['card','stage'],name='unique_card_reminder_stage')]
 class AuditEvent(models.Model):
     id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
     card=models.ForeignKey(GiftCard,null=True,blank=True,on_delete=models.PROTECT,related_name='events')

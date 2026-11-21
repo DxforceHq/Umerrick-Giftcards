@@ -10,7 +10,7 @@ from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import PasswordChangeForm
 from django.contrib.auth.models import User
-from django.db.models import Count, Min, Q
+from django.db.models import Count, Min, Q, Prefetch
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.http import Http404, JsonResponse, HttpResponse
@@ -19,8 +19,10 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST, require_http_methods
 from .forms import GenerateForm, StaffCreateForm, StaffPermissionsForm, PriceItemForm
-from .models import AuditEvent, GiftCard, Profile, Redemption, PriceItem
+from .models import AuditEvent, GiftCard, Profile, Redemption, PriceItem, CardReminder
 from .permissions import role_required, staff_can
+from .reminders import next_reminder, reminder_due_at, reminder_message, whatsapp_url
+from .card_links import QR_SIGNING_SALT, card_token, card_id_from_short_token, public_status_url
 from .services import generate_cards, activate, redeem, card_discount, database_now, normalize_customer_phone
 
 def request_json(request):
@@ -29,11 +31,9 @@ def request_json(request):
     if not isinstance(data,dict): raise ValueError('Malformed request.')
     return data
 
-QR_SIGNING_SALT='umerrick.gift-card.qr'
-
 def qr_payload(request, card):
     """Build a signed QR payload on the server; the browser never creates it."""
-    token=signing.Signer(salt=QR_SIGNING_SALT).sign(str(card.id))
+    token=card_token(card)
     return request.build_absolute_uri(f"{reverse('scanner')}?{urlencode({'token':token})}")
 
 def card_from_qr_payload(payload):
@@ -259,7 +259,48 @@ def cards_view(request):
         except ValueError: pass
         cards=cards.filter(search)
     statuses=[('GENERATED','Generated'),('WAITING','Waiting'),('READY','Ready'),('REDEEMED','Redeemed'),('EXPIRED','Expired'),('CANCELLED','Cancelled')]
-    return render(request,'giftcards/cards.html',{'cards':cards[:500],'statuses':statuses,'kinds':GiftCard.Kind.choices,'status_filter':status,'kind_filter':kind,'query':query,'staff':User.objects.filter(profile__role='STAFF'),'staff_filter':staff,'from_filter':start,'to_filter':end})
+    shown_cards=list(cards.prefetch_related(Prefetch('reminders',queryset=CardReminder.objects.select_related('sent_by')))[:500])
+    reminder_groups=[('ALL','All'),('NONE','None sent'),('FIRST','First sent'),('SECOND','Second sent'),('FINAL','Final sent')]
+    reminder_filter=request.GET.get('reminder','ALL')
+    if reminder_filter not in dict(reminder_groups): reminder_filter='ALL'
+    reminder_group_links=[]
+    if status=='READY' and request.user.is_superuser:
+        for card in shown_cards:
+            history=list(card.reminders.all())
+            sent={item.stage for item in history}
+            card.reminder_last_stage=history[-1].stage if history else 'NONE'
+            card.reminder_history=history
+            card.reminder_last_sent=history[-1] if history else None
+            next_stage, due=next_reminder(card,sent,now)
+            card.reminder_next_stage=next_stage
+            card.reminder_due_at=reminder_due_at(card,next_stage) if next_stage else None
+            card.reminder_can_send=bool(due)
+            card.reminder_whatsapp_url=whatsapp_url(card,next_stage,request,now) if due else None
+        if reminder_filter!='ALL':
+            shown_cards=[card for card in shown_cards if card.reminder_last_stage==reminder_filter]
+        for value,label in reminder_groups:
+            params=request.GET.copy()
+            params['status']='READY'
+            params['reminder']=value
+            reminder_group_links.append({'value':value,'label':label,'url':f'{reverse("cards")}?{params.urlencode()}'})
+    return render(request,'giftcards/cards.html',{'cards':shown_cards,'statuses':statuses,'kinds':GiftCard.Kind.choices,'status_filter':status,'kind_filter':kind,'query':query,'staff':User.objects.filter(profile__role='STAFF'),'staff_filter':staff,'from_filter':start,'to_filter':end,'reminder_group_links':reminder_group_links,'reminder_filter':reminder_filter})
+
+@role_required('ADMIN')
+@require_POST
+def reminder_mark_sent(request,card_id):
+    if not request.user.is_superuser: return HttpResponse('Only the owner can record reminders.',status=403)
+    with transaction.atomic():
+        card=get_object_or_404(GiftCard.objects.select_for_update(),pk=card_id)
+        now=database_now()
+        sent=set(CardReminder.objects.filter(card=card).values_list('stage',flat=True))
+        stage,due=next_reminder(card,sent,now)
+        if not due or request.POST.get('stage')!=stage:
+            messages.error(request,'This reminder is no longer available. Refresh the Ready tab.')
+        else:
+            CardReminder.objects.create(card=card,stage=stage,sent_at=now,sent_by=request.user,
+                                        message=reminder_message(card,stage,request,now))
+            messages.success(request,'Reminder marked as sent.')
+    return redirect(f'{reverse("cards")}?status=READY')
 @role_required('ADMIN')
 def card_detail(request,card_id):
     card=get_object_or_404(GiftCard.objects.select_related('created_by','activated_by','redeemed_by'),pk=card_id)
@@ -288,17 +329,21 @@ def scanner(request):
     if request.user.is_authenticated:
         return staff_scanner(request)
     token=request.GET.get('token','')
+    if token:
+        card=card_from_qr_payload(f"{reverse('scanner')}?{urlencode({'token':token})}")
+        if card:
+            return redirect(public_status_url(request,card))
     destination=reverse('public_card_status')
     if token:
         destination+=f"?{urlencode({'token':token})}"
     return redirect(destination)
 
-def public_card_status(request):
+def public_card_status(request, short_token=None):
     card=None
     attempted=False
     invalid=False
     limited=False
-    if request.method == 'POST' or request.GET.get('token'):
+    if request.method == 'POST' or request.GET.get('token') or short_token is not None:
         attempted=True
         remote_address=request.META.get('REMOTE_ADDR','unknown')
         key='public-card-lookup:'+hashlib.sha256(remote_address.encode()).hexdigest()
@@ -317,6 +362,10 @@ def public_card_status(request):
                     code=str(request.POST.get('code','')).strip().upper()
                     if re.fullmatch(r'[A-Z0-9]{4}(?:-[A-Z0-9]{4}){3}',code):
                         card=GiftCard.objects.filter(code=code).first()
+            elif short_token is not None:
+                card_id=card_id_from_short_token(short_token)
+                if card_id:
+                    card=GiftCard.objects.filter(pk=card_id).first()
             else:
                 token=request.GET.get('token','')
                 if len(token)<=512:

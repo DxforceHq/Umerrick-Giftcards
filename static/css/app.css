@@ -125,6 +125,21 @@ h2 { margin: 0 0 17px; color: var(--ink); font-size: 14px; line-height: 1.4; fon
 .block { width: 100%; margin-top: 18px; }
 .empty { padding: 30px 16px; color: var(--text-secondary); text-align: center; font-size: 11px; line-height: 1.5; }
 .table-wrap { width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; }
+.reminder-groups { display: flex; flex-wrap: wrap; gap: .4rem; margin: .8rem 0; }
+.reminder-groups a { padding: .4rem .7rem; border: 1px solid #ded8cc; border-radius: 999px; color: inherit; text-decoration: none; font-size: .85rem; }
+.reminder-groups a.selected { background: #171511; color: #fff; border-color: #171511; }
+.reminder-inline { display: flex; flex-direction: column; align-items: flex-start; gap: .2rem; min-width: 8rem; }
+.reminder-inline-status { font-size: .78rem; font-weight: 700; }
+.reminder-inline small { font-size: .75rem; color: var(--muted, #666); }
+.reminder-inline-controls { display: flex; align-items: center; gap: .35rem; }
+.reminder-inline-controls form { margin: 0; }
+.reminder-inline-controls .reminder-mark { min-height: 30px; margin-top: 0; padding: 0 7px; font-size: 10px; line-height: 1; white-space: nowrap; }
+.reminder-whatsapp { display: inline-flex; align-items: center; justify-content: center; width: 2.5rem; height: 2.5rem; color: #25d366; border-radius: 50%; text-decoration: none; }
+.reminder-whatsapp svg { width: 2rem; height: 2rem; }
+.reminder-whatsapp:hover, .reminder-whatsapp:focus-visible { color: #128c4a; }
+.reminder-inline-history { font-size: .75rem; max-width: 17rem; }
+.reminder-inline-history ul { margin: .4rem 0 0; padding-left: 1rem; }
+@media (max-width: 650px) { .card-mobile-bottom .reminder-inline { flex-basis: 100%; } }
 table { width: 100%; border-collapse: collapse; font-size: 11px; }
 th { padding: 11px 12px; background: #FBFAF8; border-bottom: 1px solid var(--border); color: #77736C; text-align: left; font-size: 8px; line-height: 1.35; font-weight: 700; letter-spacing: .11em; text-transform: uppercase; white-space: nowrap; }
 td { min-height: 43px; padding: 12px; border-bottom: 1px solid var(--border-soft); color: #393833; vertical-align: middle; white-space: nowrap; }
@@ -272,6 +287,13 @@ form .inline button, .filters button, .staff-actions button { margin-top: 0; }
 .public-card-header img { width: 84px; height: 48px; object-fit: contain; filter: invert(1); }
 .public-card-main { width: min(100% - 36px, 680px); margin: 0 auto; padding: 54px 0 65px; }
 .public-card-main h1 { margin: 9px 0 10px; font-size: clamp(30px, 6vw, 44px); line-height: 1.12; }
+.public-digital-card { width: min(100%, 440px); aspect-ratio: 85.6 / 54; margin: 24px auto 28px; filter: drop-shadow(0 14px 22px rgba(0,0,0,.16)); }
+.public-digital-card .gift-front { display: block; width: 100%; height: 100%; padding: 0; border-radius: 5%; }
+.public-digital-card .card-logo { left: 5.8%; top: 5.5%; width: 22%; height: 23%; }
+.public-digital-card .arrows { right: 7%; top: 33%; width: 17%; height: 21%; }
+.public-digital-card .card-value { left: 5.8%; top: 37%; font-size: clamp(30px, 10vw, 52px); line-height: 1; }
+.public-digital-card .gift-label { left: 5.8%; bottom: 7%; font-size: clamp(22px, 6vw, 34px); line-height: 1; }
+.public-digital-card .verify { right: 5.8%; bottom: 9%; }
 .public-card-lead { margin: 0 0 27px; color: #666; font-size: 15px; line-height: 1.55; }
 .public-scan { padding: 20px; border-radius: 14px; background: #1C1C1C; color: #F7F4EC; }
 .public-scan-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 13px; }

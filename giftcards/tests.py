@@ -10,7 +10,8 @@ from django.db import IntegrityError, connection, transaction
 from django.test import RequestFactory, TestCase, TransactionTestCase, skipUnlessDBFeature, override_settings
 from django.urls import reverse
 from django.utils import timezone
-from .models import AuditEvent, GiftCard, Redemption, Profile, PriceItem
+from .models import AuditEvent, GiftCard, Redemption, Profile, PriceItem, CardReminder
+from .reminders import next_reminder, reminder_due_at, reminder_message, whatsapp_url, one_month_later
 
 @override_settings(PASSWORD_HASHERS=['django.contrib.auth.hashers.MD5PasswordHasher'])
 class PriceListTests(TestCase):
@@ -190,6 +191,60 @@ class GiftCardTests(TestCase):
             if status=='REDEEMED': c.redeemed_at=now; c.redeemed_by=self.staff
             c.save()
         return c
+    def test_reminder_schedule_and_dynamic_message(self):
+        card=self.card('N10','ACTIVE',hours=24*40,expiry_days=20)
+        card.customer_phone='+2347012345678'; card.save(update_fields=['customer_phone'])
+        self.assertEqual(reminder_due_at(card,'FIRST'),card.eligible_at+timedelta(days=7))
+        self.assertEqual(reminder_due_at(card,'SECOND'),one_month_later(card.eligible_at))
+        self.assertEqual(reminder_due_at(card,'FINAL'),card.expires_at-timedelta(days=7))
+        self.assertEqual(one_month_later(datetime(2026,1,31,tzinfo=datetime_timezone.utc)).day,28)
+        stage,due=next_reminder(card,set())
+        self.assertEqual(stage,'FIRST'); self.assertIsNotNone(due)
+        request=RequestFactory().get('/cards/')
+        message=reminder_message(card,stage,request)
+        self.assertIn(f'Card ending: {card.code[-4:]}',message)
+        self.assertNotIn(card.code,message)
+        self.assertIn('http://testserver/g/',message)
+        self.assertIn('wa.me/2347012345678',whatsapp_url(card,stage,request))
+        status_url=message.split('Check your gift card status: ',1)[1]
+        original_token=parse_qs(urlparse(qr_payload(request,card)).query)['token'][0]
+        self.assertLess(len(status_url),len(f'http://testserver/gift-card-status/?token={original_token}'))
+        self.assertContains(self.client.get(status_url),'Ready to redeem')
+        self.assertNotContains(self.client.get(status_url),'id="public-card-form"')
+        tampered=status_url[:-2] + ('A' if status_url[-2] != 'A' else 'B') + '/'
+        self.assertContains(self.client.get(tampered),'We couldn’t verify that card.')
+        self.assertEqual(next_reminder(card,{'FIRST','SECOND'})[0],'FINAL')
+        card.status='REDEEMED'
+        self.assertEqual(next_reminder(card,set()),(None,None))
+
+    def test_only_superuser_can_record_ready_reminder_once(self):
+        card=self.card('N10','ACTIVE',hours=24*40,expiry_days=20)
+        card.customer_phone='+2347012345678'; card.save(update_fields=['customer_phone'])
+        url=reverse('reminder_mark_sent',args=[card.pk])
+        self.client.force_login(self.staff)
+        self.assertEqual(self.client.post(url,{'stage':'FIRST'}).status_code,403)
+        self.client.force_login(self.admin)
+        page=self.client.get(reverse('cards')+'?status=READY')
+        self.assertContains(page,'Mark sent')
+        self.assertNotContains(page,'reminder-panel')
+        self.assertNotContains(page,'Print preview ↗')
+        self.assertContains(self.client.get(reverse('card_detail',args=[card.pk])),'Print preview ↗')
+        self.assertContains(page,'wa.me/2347012345678')
+        self.assertEqual(self.client.post(url,{'stage':'FIRST'}).status_code,302)
+        self.assertEqual(CardReminder.objects.filter(card=card).count(),1)
+        first_sent=self.client.get(reverse('cards')+'?status=READY&reminder=FIRST')
+        self.assertContains(first_sent,card.code)
+        self.assertContains(first_sent,'First reminder sent')
+        self.client.post(url,{'stage':'FIRST'})
+        self.assertEqual(CardReminder.objects.filter(card=card).count(),1)
+        self.client.force_login(self.staff)
+        self.assertNotContains(self.client.get(reverse('dashboard')),'WhatsApp follow-ups')
+    def test_ready_card_without_phone_explains_missing_message_action(self):
+        card=self.card('N10','ACTIVE',hours=24*40,expiry_days=20)
+        self.client.force_login(self.admin)
+        page=self.client.get(reverse('cards')+'?status=READY')
+        self.assertContains(page,'No customer phone on record')
+        self.assertNotContains(page,f'/cards/{card.pk}/reminder/sent/')
     def test_admin_generates_one_and_bulk_unique_codes(self):
         one=generate_cards(self.admin,'N10',1); bulk=generate_cards(self.admin,'N15',12)
         self.assertEqual(len(one),1); self.assertEqual(len(bulk),12)
@@ -235,7 +290,7 @@ class GiftCardTests(TestCase):
         response=self.client.get(reverse('batch_print',args=[cards[0].batch_id]))
         self.assertEqual(response.status_code,200)
         html=response.content.decode()
-        self.assertEqual(html.count('class="print-page"'),3)
+        self.assertEqual(html.count('class="print-page"'),7)
         self.assertEqual(html.count('class="card-sheet"'),7)
         for card in cards:
             self.assertEqual(html.count(card.code+' ·'),1)
@@ -361,10 +416,16 @@ class GiftCardTests(TestCase):
         self.client.logout()
         redirect_response=self.client.get(reverse('scanner'),{'token':token})
         self.assertEqual(redirect_response.status_code,302)
-        self.assertTrue(redirect_response['Location'].startswith(reverse('public_card_status')+'?token='))
+        self.assertIn('/g/',redirect_response['Location'])
+        self.assertNotIn('token=',redirect_response['Location'])
         response=self.client.get(redirect_response['Location'],REMOTE_ADDR='192.0.2.31')
         self.assertContains(response,'Ready to redeem')
         self.assertContains(response,'₦15,000')
+        self.assertContains(response,'Your digital gift card')
+        self.assertContains(response,'class="public-digital-card"')
+        self.assertContains(response,'class="gift-front"')
+        self.assertNotContains(response,'class="gift-back"')
+        self.assertNotContains(response,'card_qr')
         self.assertContains(response,'Check another card')
         self.assertNotContains(response,'id="public-scan-preview"')
         self.assertNotContains(response,'id="gift-code"')

@@ -6,14 +6,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#1C1C1C">
   <title>Check your gift card · U_MERRICK</title>
-  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=20261111-status-result">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=20261121-digital-card">
 </head>
 <body class="public-card-page">
   <header class="public-card-header"><img src="{% static 'brand/umerrick-logo-cutout.png' %}" alt="U_MERRICK — ICONIC FITS"><span>ICONIC FITS · REWARDS</span></header>
   <main class="public-card-main">
     <div class="eyebrow">GIFT CARD STATUS</div>
     {% if card %}
-    <h1>Your gift card</h1>
+    <h1>Your digital gift card</h1>
     {% else %}
     <h1>Check your gift card</h1>
     <p class="public-card-lead">Scan the QR code or enter the code printed on your card to see when your reward is ready to use.</p>
@@ -42,9 +42,18 @@
     {% endif %}
 
     {% if card %}
+    <section class="public-digital-card" aria-label="Digital preview of your {{ card.get_kind_display }} U_MERRICK gift card">
+      <div class="gift-front">
+        <img class="card-logo" src="{% static 'brand/umerrick-logo-cutout.png' %}" alt="U_MERRICK — ICONIC FITS">
+        <svg class="arrows" viewBox="0 0 75 48" aria-hidden="true" focusable="false"><path d="M6 7 22 24 6 41 M29 7 45 24 29 41 M52 7 68 24 52 41" /></svg>
+        <div class="card-value">{% if card.kind == 'PCT10' %}10%{% else %}{{ card.get_kind_display }}{% endif %}</div>
+        <div class="gift-label">Gift Card<span>.</span></div>
+        <div class="verify">VERIFIED <b>✓</b></div>
+      </div>
+    </section>
     <section class="public-card-result" aria-labelledby="status-heading">
       <div class="public-card-result-top"><span class="eyebrow">U_MERRICK GIFT CARD</span><span class="public-card-code">Ending {{ card.code|slice:'-4:' }}</span></div>
-      <h2 id="status-heading">{{ card.get_kind_display }} reward</h2>
+      <h2 id="status-heading">Card status</h2>
       <div class="public-status public-status-{{ status|lower }}">
         {% if status == 'GENERATED' %}Not yet activated
         {% elif status == 'WAITING' %}Waiting period
