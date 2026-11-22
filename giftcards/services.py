@@ -82,7 +82,9 @@ def redeem(card_id,actor,amount):
     with transaction.atomic():
         card=GiftCard.objects.select_for_update().get(pk=card_id); previous=card.display_status; now=database_now()
         reason_code=''
-        if card.status!=GiftCard.Status.ACTIVE:
+        if card.is_test:
+            failure='Test cards cannot be redeemed.'; reason_code='TEST_CARD'
+        elif card.status!=GiftCard.Status.ACTIVE:
             failure='This card is not active or has already been redeemed.'
             reason_code='ALREADY_REDEEMED' if card.status==GiftCard.Status.REDEEMED else 'NOT_ACTIVE'
         elif card.expires_at is None or now>=card.expires_at: failure='This card has expired.'; reason_code='EXPIRED_CARD'

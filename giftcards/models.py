@@ -36,6 +36,7 @@ class GiftCard(models.Model):
     activated_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,null=True,blank=True,related_name='activated_cards')
     customer_phone=models.CharField(max_length=20,blank=True)
     reminder_short_url=models.URLField(max_length=255,blank=True)
+    is_test=models.BooleanField(default=False,db_index=True)
     activation_purchase_amount=models.DecimalField(max_digits=12,decimal_places=2,null=True,blank=True)
     expires_at=models.DateTimeField(null=True,blank=True)
     redeemed_at=models.DateTimeField(null=True,blank=True)

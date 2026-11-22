@@ -36,6 +36,8 @@ def next_reminder(card, sent_stages, now=None):
         return None, None
     for stage in STAGES:
         if stage not in sent_stages:
+            if card.is_test:
+                return stage, now
             due_at = reminder_due_at(card, stage)
             return stage, due_at if due_at and now >= due_at else None
     return None, None
@@ -52,7 +54,8 @@ def reminder_message(card, stage, request, now=None, status_url=None):
         CardReminder.Stage.FINAL: f'Your U_MERRICK gift card expires in {days_left} day{"s" if days_left != 1 else ""}.',
     }[stage]
     status_url = status_url or card.reminder_short_url or public_status_url(request, card)
-    return f'Hello! 👋 {intro}\nReward: {reward}💰\nCard ending: {card.code[-4:]}\nExpires: {expiry}.\nEnjoy discount in-store at\nU_MERRICK — ICONIC FITS. Terms and conditions apply.\n🚀🚀Check your gift card status: {status_url}'
+    test_notice = 'TEST CARD — NOT VALID FOR REDEMPTION\n' if card.is_test else ''
+    return f'{test_notice}Hello! 👋 {intro}\nReward: {reward}💰\nCard ending: {card.code[-4:]}\nExpires: {expiry}.\nEnjoy discount in-store at\nU_MERRICK — ICONIC FITS. Terms and conditions apply.\n🚀🚀Check your gift card status: {status_url}'
 
 
 def whatsapp_url(card, stage, request, now=None, status_url=None):

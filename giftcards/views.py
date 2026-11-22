@@ -189,7 +189,7 @@ def activity_chart(start,end):
         else: cursor=date(cursor.year+1,1,1) if cursor.month==12 else date(cursor.year,cursor.month+1,1)
     counts={key:{'issued':0,'activated':0,'redeemed':0} for key in keys}
     for name,field in [('issued','created_at'),('activated','activated_at'),('redeemed','redeemed_at')]:
-        rows=filter_local_dates(GiftCard.objects.all(),field,start,end).values_list(field,flat=True)
+        rows=filter_local_dates(GiftCard.objects.filter(is_test=False),field,start,end).values_list(field,flat=True)
         for timestamp in rows.iterator():
             if timestamp is not None:
                 day=timezone.localtime(timestamp,ZoneInfo(settings.TIME_ZONE)).date()
@@ -204,16 +204,16 @@ def dashboard(request):
     show_install_prompt=request.session.pop('offer_home_screen_install',False)
     if is_admin(request.user):
         period,start,end,period_error=dashboard_period(request)
-        cards=filter_local_dates(GiftCard.objects.all(),'created_at',start,end)
+        cards=filter_local_dates(GiftCard.objects.filter(is_test=False),'created_at',start,end)
         stats={s:0 for s in ['GENERATED','WAITING','READY','REDEEMED','EXPIRED','CANCELLED']}
         for card in cards.iterator(): stats[card.display_status]+=1
         stats['TOTAL']=cards.count()
-        recent=(filter_local_dates(AuditEvent.objects.filter(action__in=CARD_AUDIT_ACTIONS),
+        recent=(filter_local_dates(AuditEvent.objects.filter(action__in=CARD_AUDIT_ACTIONS,card__is_test=False),
                                    'occurred_at',start,end).select_related('actor','card'))
         performance=[]
         staff=User.objects.filter(Q(profile__role__in=(Profile.Role.STAFF,Profile.Role.ADMIN))|Q(is_superuser=True)).select_related('profile').annotate(
-            total_activated=Count('activated_cards',distinct=True),
-            total_redeemed=Count('activated_cards',filter=Q(activated_cards__status=GiftCard.Status.REDEEMED),distinct=True),
+            total_activated=Count('activated_cards',filter=Q(activated_cards__is_test=False),distinct=True),
+            total_redeemed=Count('activated_cards',filter=Q(activated_cards__status=GiftCard.Status.REDEEMED,activated_cards__is_test=False),distinct=True),
         ).order_by('username')
         for person in staff:
             person.redemption_rate=round(100*person.total_redeemed/person.total_activated,1) if person.total_activated else 0
@@ -224,7 +224,7 @@ def dashboard(request):
             'to_filter':end.isoformat(),'period':period,'period_error':period_error,
             'period_label':f'{start:%b} {start.day}, {start:%Y} – {end:%b} {end.day}, {end:%Y}',
             'chart':activity_chart(start,end)})
-    return render(request,'giftcards/dashboard_staff.html',{'operations':AuditEvent.objects.filter(actor=request.user,action__in=CARD_AUDIT_ACTIONS).select_related('card')[:12],'show_install_prompt':show_install_prompt})
+    return render(request,'giftcards/dashboard_staff.html',{'operations':AuditEvent.objects.filter(actor=request.user,action__in=CARD_AUDIT_ACTIONS,card__is_test=False).select_related('card')[:12],'show_install_prompt':show_install_prompt})
 @role_required('ADMIN')
 def generate_view(request):
     form=GenerateForm(request.POST or None)
@@ -232,7 +232,7 @@ def generate_view(request):
         try: cards=generate_cards(request.user,form.cleaned_data['kind'],form.cleaned_data['count'])
         except ValueError as exc: form.add_error(None,str(exc))
         else: return render(request,'giftcards/print_cards.html',{'cards':cards,'created':True})
-    batches=(GiftCard.objects.order_by()
+    batches=(GiftCard.objects.filter(is_test=False).order_by()
              .values('batch_id','kind','created_by__username')
              .annotate(card_count=Count('id'),generated_at=Min('created_at'))
              .order_by('-generated_at'))
@@ -240,7 +240,7 @@ def generate_view(request):
     return render(request,'giftcards/generate.html',{'form':form,'batch_page':batch_page})
 @role_required('ADMIN')
 def cards_view(request):
-    cards=GiftCard.objects.select_related('created_by','activated_by','redeemed_by').all()
+    cards=GiftCard.objects.filter(is_test=False).select_related('created_by','activated_by','redeemed_by')
     status=request.GET.get('status',''); kind=request.GET.get('kind',''); query=request.GET.get('q','')
     now=database_now()
     if status in ('GENERATED','REDEEMED','CANCELLED'): cards=cards.filter(status=status)
@@ -289,6 +289,47 @@ def cards_view(request):
             reminder_group_links.append({'value':value,'label':label,'url':f'{reverse("cards")}?{params.urlencode()}'})
     return render(request,'giftcards/cards.html',{'cards':shown_cards,'statuses':statuses,'kinds':GiftCard.Kind.choices,'status_filter':status,'kind_filter':kind,'query':query,'staff':User.objects.filter(profile__role='STAFF'),'staff_filter':staff,'from_filter':start,'to_filter':end,'reminder_group_links':reminder_group_links,'reminder_filter':reminder_filter})
 
+
+@role_required('ADMIN')
+@require_http_methods(['GET', 'POST'])
+def test_cards(request):
+    if not request.user.is_superuser:
+        return HttpResponse('Only the owner can manage test cards.', status=403)
+    if request.method == 'POST':
+        kind=request.POST.get('kind', '')
+        try:
+            phone=normalize_customer_phone(request.POST.get('phone', ''))
+            if not phone:
+                raise ValueError('Enter a phone number for the test message.')
+            if kind not in GiftCard.Kind.values:
+                raise ValueError('Choose a valid reward.')
+            with transaction.atomic():
+                card=generate_cards(request.user,kind,1)[0]
+                card.is_test=True
+                card.save(update_fields=['is_test'])
+                card=activate(card.pk,request.user,phone)
+                card.activated_at=card.activated_at-timezone.timedelta(hours=73)
+                card.expires_at=database_now()+timezone.timedelta(days=7)
+                card.save(update_fields=['activated_at','expires_at'])
+                AuditEvent.objects.create(card=card,actor=request.user,action='TEST_CARD_CREATED',previous_state='ACTIVE',new_state='ACTIVE',outcome='SUCCESS',details={'test_card':True})
+        except ValueError as exc:
+            messages.error(request,str(exc))
+        else:
+            messages.success(request,'Test card activated. Its first reminder is ready.')
+            return redirect('test_cards')
+    now=database_now()
+    cards=list(GiftCard.objects.filter(is_test=True).prefetch_related('reminders').order_by('-created_at')[:50])
+    for card in cards:
+        history=list(card.reminders.all())
+        sent={item.stage for item in history}
+        card.reminder_history=history
+        card.reminder_last_sent=history[-1] if history else None
+        stage,due=next_reminder(card,sent,now)
+        card.reminder_next_stage=stage
+        card.reminder_can_send=bool(due)
+        card.reminder_whatsapp_url=reverse('reminder_open',args=[card.pk]) if due else None
+    return render(request,'giftcards/test_cards.html',{'cards':cards,'kinds':GiftCard.Kind.choices})
+
 @role_required('ADMIN')
 @require_GET
 def reminder_open(request,card_id):
@@ -299,7 +340,7 @@ def reminder_open(request,card_id):
     stage,due=next_reminder(card,sent,now)
     if not due:
         messages.error(request,'This reminder is not available yet.')
-        return redirect(f'{reverse("cards")}?status=READY')
+        return redirect('test_cards' if card.is_test else f'{reverse("cards")}?status=READY')
     status_url=card.reminder_short_url
     if not status_url:
         destination=public_status_url(request,card)
@@ -329,24 +370,24 @@ def reminder_mark_sent(request,card_id):
             CardReminder.objects.create(card=card,stage=stage,sent_at=now,sent_by=request.user,
                                         message=reminder_message(card,stage,request,now))
             messages.success(request,'Reminder marked as sent.')
-    return redirect(f'{reverse("cards")}?status=READY')
+    return redirect('test_cards' if card.is_test else f'{reverse("cards")}?status=READY')
 @role_required('ADMIN')
 def card_detail(request,card_id):
     card=get_object_or_404(GiftCard.objects.select_related('created_by','activated_by','redeemed_by'),pk=card_id)
     return render(request,'giftcards/card_detail.html',{'card':card,'events':card.events.filter(action__in=CARD_AUDIT_ACTIONS).select_related('actor','card','card__redemption'),'redemption':getattr(card,'redemption',None)})
 @role_required('ADMIN')
 def batch_print(request,batch_id):
-    cards=GiftCard.objects.filter(batch_id=batch_id)
+    cards=GiftCard.objects.filter(batch_id=batch_id,is_test=False)
     if not cards.exists(): raise Http404
     return render(request,'giftcards/print_cards.html',{'cards':cards,'created':False})
 @role_required('ADMIN')
 def card_print(request,card_id):
-    card=get_object_or_404(GiftCard,pk=card_id)
+    card=get_object_or_404(GiftCard,pk=card_id,is_test=False)
     return render(request,'giftcards/print_cards.html',{'cards':[card],'created':False})
 @role_required('ADMIN')
 def card_qr(request,card_id):
     import qrcode
-    card=get_object_or_404(GiftCard,pk=card_id)
+    card=get_object_or_404(GiftCard,pk=card_id,is_test=False)
     payload=qr_payload(request,card)
     image=qrcode.make(payload); buffer=io.BytesIO(); image.save(buffer,format='PNG')
     return HttpResponse(buffer.getvalue(),content_type='image/png')
@@ -433,6 +474,8 @@ def card_lookup(request):
         card=GiftCard.objects.filter(code=code).first()
     if not card:
         return JsonResponse({'error':'No card matches that code.'},status=404)
+    if card.is_test:
+        return JsonResponse({'error':'This is an owner test card and cannot be used in store.'},status=403)
     response=card_json(card)
     response['can_activate']=staff_can(request.user,'can_activate_cards')
     response['can_redeem']=staff_can(request.user,'can_redeem_cards')
@@ -463,6 +506,8 @@ def preview_redemption(request,card_id):
     card=GiftCard.objects.filter(pk=card_id).first()
     if not card:
         return JsonResponse({'error':'Card not found.'},status=404)
+    if card.is_test:
+        return JsonResponse({'error':'Test cards cannot be redeemed.'},status=409)
     try:
         now=database_now()
         if card.status!=GiftCard.Status.ACTIVE: raise ValueError('Card is not active or has already been redeemed.')
@@ -539,7 +584,7 @@ def password_change(request):
     return render(request,'registration/password_change.html',{'form':form})
 @role_required('ADMIN')
 def audit_view(request):
-    events=AuditEvent.objects.filter(action__in=CARD_AUDIT_ACTIONS).select_related('actor','card','card__redemption')
+    events=AuditEvent.objects.filter(action__in=CARD_AUDIT_ACTIONS,card__is_test=False).select_related('actor','card','card__redemption')
     action=request.GET.get('action',''); outcome=request.GET.get('outcome',''); reason=request.GET.get('reason','')
     staff=request.GET.get('staff',''); code=request.GET.get('code','').strip(); start=request.GET.get('from',''); end=request.GET.get('to','')
     try: date.fromisoformat(start) if start else None
@@ -565,7 +610,7 @@ def report_csv(request):
     import csv
     response=HttpResponse(content_type='text/csv'); response['Content-Disposition']='attachment; filename="umerrick-gift-card-report.csv"'
     writer=csv.writer(response); writer.writerow(['Code','Type','Status','Generated','Generated by','Activated','Activated by','Customer phone','activation purchase amount','Expires','Redeemed','Redeemed by','Total purchase at redemption','Gift card discount','Payable after discount'])
-    for c in GiftCard.objects.select_related('created_by','activated_by','redeemed_by','redemption'):
+    for c in GiftCard.objects.filter(is_test=False).select_related('created_by','activated_by','redeemed_by','redemption'):
         redemption=getattr(c,'redemption',None)
         phone=("'"+c.customer_phone) if c.customer_phone else ''
         writer.writerow([c.code,c.get_kind_display(),c.display_status,c.created_at,c.created_by.username,c.activated_at,c.activated_by.username if c.activated_by else '',phone,c.activation_purchase_amount if c.activation_purchase_amount is not None else '',c.expires_at,c.redeemed_at,c.redeemed_by.username if c.redeemed_by else '',redemption.purchase_amount if redemption else '',redemption.discount_amount if redemption else '',redemption.payable_amount if redemption else ''])

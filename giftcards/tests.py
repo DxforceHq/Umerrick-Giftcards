@@ -13,6 +13,48 @@ from django.utils import timezone
 from .models import AuditEvent, GiftCard, Redemption, Profile, PriceItem, CardReminder
 from .reminders import next_reminder, reminder_due_at, reminder_message, whatsapp_url, one_month_later
 
+
+@override_settings(PASSWORD_HASHERS=['django.contrib.auth.hashers.MD5PasswordHasher'])
+class OwnerTestCardTests(TestCase):
+    def setUp(self):
+        self.owner=User.objects.create_superuser('testowner',password='Strong-admin-pass-912!')
+        self.staff=User.objects.create_user('teststaff',password='Strong-staff-pass-912!')
+
+    def test_only_superuser_can_create_test_cards(self):
+        self.client.force_login(self.staff)
+        self.assertEqual(self.client.post(reverse('test_cards'),{'kind':'N10','phone':'+2347012345678'}).status_code,403)
+        self.assertFalse(GiftCard.objects.exists())
+
+    def test_test_card_reminders_are_immediate_and_excluded_from_reports(self):
+        self.client.force_login(self.owner)
+        response=self.client.post(reverse('test_cards'),{'kind':'N10','phone':'+2347012345678'})
+        self.assertEqual(response.status_code,302)
+        card=GiftCard.objects.get()
+        self.assertTrue(card.is_test)
+        self.assertEqual(card.display_status,'READY')
+        self.assertEqual(card.customer_phone,'+2347012345678')
+        self.assertNotContains(self.client.get(reverse('cards')+'?status=READY'),card.code)
+        self.assertNotIn(card.code,self.client.get(reverse('report_csv')).content.decode())
+        self.assertNotContains(self.client.get(reverse('dashboard')),card.code)
+        self.assertContains(self.client.get(reverse('public_card_status')+'?token=invalid'), 'Check your gift card')
+        for stage in CardReminder.Stage.values:
+            next_stage,due=next_reminder(card,set(CardReminder.objects.filter(card=card).values_list('stage',flat=True)))
+            self.assertEqual(next_stage,stage)
+            self.assertIsNotNone(due)
+            result=self.client.post(reverse('reminder_mark_sent',args=[card.pk]),{'stage':stage})
+            self.assertRedirects(result,reverse('test_cards'))
+        self.assertEqual(CardReminder.objects.filter(card=card).count(),3)
+        self.assertIsNone(next_reminder(card,set(CardReminder.Stage.values))[0])
+        self.assertIn('TEST CARD',CardReminder.objects.get(card=card,stage='FIRST').message)
+
+    def test_test_card_cannot_be_redeemed(self):
+        self.client.force_login(self.owner)
+        self.client.post(reverse('test_cards'),{'kind':'N10','phone':'+2347012345678'})
+        card=GiftCard.objects.get()
+        response=self.client.post(reverse('redeem',args=[card.pk]),data='{"amount":"20000"}',content_type='application/json')
+        self.assertEqual(response.status_code,409)
+        self.assertFalse(Redemption.objects.filter(card=card).exists())
+
 @override_settings(PASSWORD_HASHERS=['django.contrib.auth.hashers.MD5PasswordHasher'])
 class PriceListTests(TestCase):
     def setUp(self):

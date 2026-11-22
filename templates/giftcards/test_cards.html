@@ -1,0 +1,16 @@
+{% extends 'base.html' %}{% block title %}Test reminders · U_MERRICK{% endblock %}{% block content %}
+<div class="cards-page">
+  <header class="heading"><div class="eyebrow">OWNER TESTING</div><h1>Test reminders</h1><p>Create a test card for your own WhatsApp number. Test cards cannot be redeemed and are excluded from customer reports.</p><a href="{% url 'cards' %}">Back to gift cards</a></header>
+  <section class="panel test-cards-panel"><h2>Activate a test card</h2>
+    <form class="test-card-form" method="post">{% csrf_token %}
+      <label>Reward <select name="kind" required>{% for value,label in kinds %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select></label>
+      <label>Your WhatsApp number <input name="phone" type="tel" inputmode="tel" placeholder="+2347012345678" required></label>
+      <button class="primary" type="submit">Create and activate test card</button>
+    </form>
+  </section>
+  <section class="panel test-cards-panel"><h2>Test cards</h2><p>Open WhatsApp, send the prepared message, then mark that stage sent. The next stage appears immediately.</p>
+    {% for card in cards %}<article class="card-mobile-item"><strong>TEST · {{ card.code }}</strong><p>{{ card.get_kind_display }} · {{ card.customer_phone }}</p>{% include 'giftcards/reminder_action.html' %}</article>
+    {% empty %}<p>No test cards yet.</p>{% endfor %}
+  </section>
+</div>
+{% endblock %}

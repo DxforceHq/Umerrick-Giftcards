@@ -49,6 +49,7 @@
     {% endif %}
 
     {% if card %}
+    {% if card.is_test %}<div class="public-card-message" role="status"><strong>TEST CARD — NOT VALID FOR REDEMPTION.</strong> This card is only for checking the reminder workflow.</div>{% endif %}
     <section class="public-digital-card" aria-label="Digital preview of your {{ card.get_kind_display }} U_MERRICK gift card">
       <div class="gift-front">
         <img class="card-logo" src="{% static 'brand/umerrick-logo-cutout.png' %}" alt="U_MERRICK — ICONIC FITS">
@@ -62,14 +63,16 @@
       <div class="public-card-result-top"><span class="eyebrow">U_MERRICK GIFT CARD</span><span class="public-card-code">Ending {{ card.code|slice:'-4:' }}</span></div>
       <h2 id="status-heading">Card status</h2>
       <div class="public-status public-status-{{ status|lower }}">
-        {% if status == 'GENERATED' %}Not yet activated
+        {% if card.is_test %}Test card
+        {% elif status == 'GENERATED' %}Not yet activated
         {% elif status == 'WAITING' %}Waiting period
         {% elif status == 'READY' %}Ready to redeem
         {% elif status == 'REDEEMED' %}Redeemed
         {% elif status == 'EXPIRED' %}Expired
         {% else %}Unavailable{% endif %}
       </div>
-      {% if status == 'GENERATED' %}<p>Ask U_MERRICK staff to activate your card when it is handed to you. The 72-hour waiting period begins at activation.</p>
+      {% if card.is_test %}<p>This card is for owner testing only and cannot be redeemed in store.</p>
+      {% elif status == 'GENERATED' %}<p>Ask U_MERRICK staff to activate your card when it is handed to you. The 72-hour waiting period begins at activation.</p>
       {% elif status == 'WAITING' %}<p>Your card is activated. You can redeem it from <strong>{{ card.eligible_at|localtime|date:'j M Y, g:i A' }} (Lagos time)</strong>.</p><p>It expires on {{ card.expires_at|localtime|date:'j M Y, g:i A' }} (Lagos time).</p>
       {% elif status == 'READY' %}<p>Your reward is ready to use in store. Present your card before <strong>{{ card.expires_at|localtime|date:'j M Y, g:i A' }} (Lagos time)</strong>.</p>
       {% elif status == 'REDEEMED' %}<p>This card has already been used and cannot be redeemed again.</p>
