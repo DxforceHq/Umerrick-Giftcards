@@ -45,17 +45,15 @@ def next_reminder(card, sent_stages, now=None):
 
 def reminder_message(card, stage, request, now=None, status_url=None):
     now = now or timezone.now()
-    expiry = timezone.localtime(card.expires_at).strftime('%d %B %Y')
-    reward = card.get_kind_display()
     days_left = max(0, (timezone.localtime(card.expires_at).date() - timezone.localtime(now).date()).days)
     intro = {
         CardReminder.Stage.FIRST: 'Your U_MERRICK gift card is ready to be redeemed.',
-        CardReminder.Stage.SECOND: 'A reminder that your U_MERRICK gift card is still available.',
+        CardReminder.Stage.SECOND: 'Your U_MERRICK gift card is still ready to redeem.',
         CardReminder.Stage.FINAL: f'Your U_MERRICK gift card expires in {days_left} day{"s" if days_left != 1 else ""}.',
     }[stage]
     status_url = status_url or card.reminder_short_url or public_status_url(request, card)
     test_notice = 'TEST CARD — NOT VALID FOR REDEMPTION\n' if card.is_test else ''
-    return f'{test_notice}Hello! 👋 {intro}\nReward: {reward}💰\nCard ending: {card.code[-4:]}\nExpires: {expiry}.\nEnjoy discount in-store at\nU_MERRICK — ICONIC FITS. Terms and conditions apply.\n🚀🚀Check your gift card status: {status_url}'
+    return f'{test_notice}*Hello! 👋 {intro}*\n\n🚀🚀Check your gift card status: {status_url}'
 
 
 def whatsapp_url(card, stage, request, now=None, status_url=None):

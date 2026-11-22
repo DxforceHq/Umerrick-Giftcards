@@ -371,6 +371,27 @@ def reminder_mark_sent(request,card_id):
                                         message=reminder_message(card,stage,request,now))
             messages.success(request,'Reminder marked as sent.')
     return redirect('test_cards' if card.is_test else f'{reverse("cards")}?status=READY')
+
+
+@role_required('ADMIN')
+@require_POST
+def reminder_undo_sent(request,card_id):
+    if not request.user.is_superuser:
+        return HttpResponse('Only the owner can undo reminders.',status=403)
+    with transaction.atomic():
+        card=get_object_or_404(GiftCard.objects.select_for_update(),pk=card_id)
+        latest=CardReminder.objects.filter(card=card).order_by('-sent_at','-pk').first()
+        if latest is None or latest.stage!=request.POST.get('stage'):
+            messages.error(request,'The reminder history changed. Refresh the list and try again.')
+        else:
+            remaining=set(CardReminder.objects.filter(card=card).exclude(pk=latest.pk).values_list('stage',flat=True))
+            reopened,due=next_reminder(card,remaining,database_now())
+            if reopened!=latest.stage or not due:
+                messages.error(request,'This reminder cannot be reopened now.')
+            else:
+                latest.delete()
+                messages.success(request,'Reminder mark undone. Send the message, then mark it sent again.')
+    return redirect('test_cards' if card.is_test else f'{reverse("cards")}?status=READY')
 @role_required('ADMIN')
 def card_detail(request,card_id):
     card=get_object_or_404(GiftCard.objects.select_related('created_by','activated_by','redeemed_by'),pk=card_id)
@@ -444,6 +465,8 @@ def public_card_status(request, short_token=None):
     response=render(request,'giftcards/public_status.html',{
         'card':card,'attempted':attempted,'invalid':invalid,'limited':limited,
         'status':card.display_status if card else None,
+        'canonical_url':public_status_url(request,card) if card else request.build_absolute_uri(reverse('public_card_status')),
+        'meta_app_id':settings.META_APP_ID,
         'preview_image_url':request.build_absolute_uri(static('brand/umerrick-logo.jpg')),
     })
     response['Cache-Control']='no-store'

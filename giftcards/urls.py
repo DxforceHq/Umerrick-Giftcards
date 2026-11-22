@@ -5,4 +5,5 @@ urlpatterns=[path('',views.dashboard,name='dashboard'),path('prices/',views.pric
 urlpatterns += urlpatterns_public
 urlpatterns += [path('cards/<uuid:card_id>/reminder/sent/',views.reminder_mark_sent,name='reminder_mark_sent')]
 urlpatterns += [path('cards/<uuid:card_id>/reminder/open/',views.reminder_open,name='reminder_open')]
+urlpatterns += [path('cards/<uuid:card_id>/reminder/undo/',views.reminder_undo_sent,name='reminder_undo_sent')]
 urlpatterns += [path('cards/test/',views.test_cards,name='test_cards')]

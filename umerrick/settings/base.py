@@ -77,6 +77,7 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 STATIC_ROOT = BASE_DIR / "staticfiles"
+META_APP_ID = os.environ.get("META_APP_ID", "").strip()
 MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"
 

@@ -136,6 +136,7 @@ h2 { margin: 0 0 17px; color: var(--ink); font-size: 14px; line-height: 1.4; fon
 .reminder-groups a.selected { background: #171511; color: #fff; border-color: #171511; }
 .reminder-inline { display: flex; flex-direction: column; align-items: flex-start; gap: .2rem; min-width: 8rem; }
 .reminder-inline-status { font-size: .78rem; font-weight: 700; }
+.reminder-inline-controls .reminder-undo { color: var(--text-secondary); }
 .reminder-inline small { font-size: .75rem; color: var(--muted, #666); }
 .reminder-inline-controls { display: flex; align-items: center; gap: .35rem; }
 .reminder-inline-controls form { margin: 0; }
