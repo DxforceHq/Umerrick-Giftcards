@@ -202,11 +202,16 @@ class GiftCardTests(TestCase):
         self.assertEqual(stage,'FIRST'); self.assertIsNotNone(due)
         request=RequestFactory().get('/cards/')
         message=reminder_message(card,stage,request)
+        self.assertTrue(message.startswith('Hello! 👋 Your U_MERRICK gift card is ready to be redeemed.'))
+        self.assertIn('Reward: ₦10,000💰',message)
+        self.assertIn('Enjoy discount in-store at\nU_MERRICK — ICONIC FITS.',message)
+        self.assertIn('🚀🚀Check your gift card status: http://testserver/g/',message)
+        self.assertFalse(message.endswith('🚀🚀'))
         self.assertIn(f'Card ending: {card.code[-4:]}',message)
         self.assertNotIn(card.code,message)
         self.assertIn('http://testserver/g/',message)
         self.assertIn('wa.me/2347012345678',whatsapp_url(card,stage,request))
-        status_url=message.split('Check your gift card status: ',1)[1]
+        status_url=message.split('Check your gift card status: ',1)[1].splitlines()[0]
         original_token=parse_qs(urlparse(qr_payload(request,card)).query)['token'][0]
         self.assertLess(len(status_url),len(f'http://testserver/gift-card-status/?token={original_token}'))
         self.assertContains(self.client.get(status_url),'Ready to redeem')
@@ -229,7 +234,8 @@ class GiftCardTests(TestCase):
         self.assertNotContains(page,'reminder-panel')
         self.assertNotContains(page,'Print preview ↗')
         self.assertContains(self.client.get(reverse('card_detail',args=[card.pk])),'Print preview ↗')
-        self.assertContains(page,'wa.me/2347012345678')
+        self.assertContains(page,reverse('reminder_open',args=[card.pk]))
+        self.assertNotContains(page,'class="reminder-whatsapp" href="'+reverse('reminder_open',args=[card.pk])+'" target="_blank"')
         self.assertEqual(self.client.post(url,{'stage':'FIRST'}).status_code,302)
         self.assertEqual(CardReminder.objects.filter(card=card).count(),1)
         first_sent=self.client.get(reverse('cards')+'?status=READY&reminder=FIRST')
@@ -239,6 +245,62 @@ class GiftCardTests(TestCase):
         self.assertEqual(CardReminder.objects.filter(card=card).count(),1)
         self.client.force_login(self.staff)
         self.assertNotContains(self.client.get(reverse('dashboard')),'WhatsApp follow-ups')
+    def test_tinyurl_reminder_link_is_owner_only_and_reused(self):
+        card=self.card('N10','ACTIVE',hours=24*40,expiry_days=20)
+        card.customer_phone='+2347012345678'; card.save(update_fields=['customer_phone'])
+        url=reverse('reminder_open',args=[card.pk])
+        self.client.force_login(self.staff)
+        self.assertEqual(self.client.get(url).status_code,403)
+        self.client.force_login(self.admin)
+        with patch('giftcards.views.shorten_card_url',return_value='https://tinyurl.com/card123') as shorten:
+            first=self.client.get(url)
+            second=self.client.get(url)
+        self.assertEqual(shorten.call_count,1)
+        self.assertEqual(first.status_code,302)
+        self.assertIn('wa.me/2347012345678',first['Location'])
+        self.assertIn('https://tinyurl.com/card123',parse_qs(urlparse(first['Location']).query)['text'][0])
+        self.assertIn('https://tinyurl.com/card123',parse_qs(urlparse(second['Location']).query)['text'][0])
+        card.refresh_from_db()
+        self.assertEqual(card.reminder_short_url,'https://tinyurl.com/card123')
+        self.client.post(reverse('reminder_mark_sent',args=[card.pk]),{'stage':'FIRST'})
+        self.assertIn('https://tinyurl.com/card123',CardReminder.objects.get(card=card).message)
+
+    def test_tinyurl_failure_keeps_original_card_link(self):
+        from .tinyurl import TinyURLUnavailable
+        card=self.card('N10','ACTIVE',hours=24*40,expiry_days=20)
+        card.customer_phone='+2347012345678'; card.save(update_fields=['customer_phone'])
+        self.client.force_login(self.admin)
+        with patch('giftcards.views.shorten_card_url',side_effect=TinyURLUnavailable('unavailable')):
+            response=self.client.get(reverse('reminder_open',args=[card.pk]))
+        message=parse_qs(urlparse(response['Location']).query)['text'][0]
+        self.assertIn('http://testserver/g/',message)
+        card.refresh_from_db()
+        self.assertFalse(card.reminder_short_url)
+
+    def test_tinyurl_api_uses_configured_key_and_response(self):
+        from .tinyurl import shorten_card_url
+        from unittest.mock import MagicMock
+        response=MagicMock()
+        response.__enter__.return_value=response
+        with patch.dict('os.environ',{'TINYURL_API_KEY':'test-key','TINYURL_API_URL':'https://api.tinyurl.com'}), patch('giftcards.tinyurl.urlopen',return_value=response) as request_call, patch('giftcards.tinyurl.json.load',return_value={'data':{'tiny_url':'https://tinyurl.com/card123'}}):
+            result=shorten_card_url('https://example.com/g/a-long-signed-token/')
+        self.assertEqual(result,'https://tinyurl.com/card123')
+        request=request_call.call_args.args[0]
+        self.assertEqual(request.full_url,'https://api.tinyurl.com/create')
+        self.assertEqual(request.get_header('Authorization'),'Bearer test-key')
+        self.assertEqual(__import__('json').loads(request.data)['url'],'https://example.com/g/a-long-signed-token/')
+
+    @override_settings(ALLOWED_HOSTS=['test.ngrok-free.app'])
+    def test_ngrok_card_link_uses_forwarded_https(self):
+        from .card_links import public_status_url
+        card=self.card('N10','ACTIVE',hours=24*40,expiry_days=20)
+        request=RequestFactory().get(
+            '/cards/',
+            HTTP_HOST='test.ngrok-free.app',
+            HTTP_X_FORWARDED_PROTO='https',
+        )
+        self.assertTrue(request.is_secure())
+        self.assertTrue(public_status_url(request,card).startswith('https://test.ngrok-free.app/g/'))
     def test_ready_card_without_phone_explains_missing_message_action(self):
         card=self.card('N10','ACTIVE',hours=24*40,expiry_days=20)
         self.client.force_login(self.admin)
@@ -422,6 +484,8 @@ class GiftCardTests(TestCase):
         self.assertContains(response,'Ready to redeem')
         self.assertContains(response,'₦15,000')
         self.assertContains(response,'Your digital gift card')
+        self.assertContains(response,'property="og:image" content="http://testserver/static/brand/umerrick-logo.jpg"')
+        self.assertContains(response,'property="og:title" content="Check your gift card · U_MERRICK"')
         self.assertContains(response,'class="public-digital-card"')
         self.assertContains(response,'class="gift-front"')
         self.assertNotContains(response,'class="gift-back"')

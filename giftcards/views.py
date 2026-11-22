@@ -15,14 +15,16 @@ from django.core.paginator import Paginator
 from django.db import transaction
 from django.http import Http404, JsonResponse, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.templatetags.static import static
 from django.urls import reverse
 from django.utils import timezone
-from django.views.decorators.http import require_POST, require_http_methods
+from django.views.decorators.http import require_GET, require_POST, require_http_methods
 from .forms import GenerateForm, StaffCreateForm, StaffPermissionsForm, PriceItemForm
 from .models import AuditEvent, GiftCard, Profile, Redemption, PriceItem, CardReminder
 from .permissions import role_required, staff_can
 from .reminders import next_reminder, reminder_due_at, reminder_message, whatsapp_url
 from .card_links import QR_SIGNING_SALT, card_token, card_id_from_short_token, public_status_url
+from .tinyurl import shorten_card_url, TinyURLUnavailable
 from .services import generate_cards, activate, redeem, card_discount, database_now, normalize_customer_phone
 
 def request_json(request):
@@ -275,7 +277,7 @@ def cards_view(request):
             card.reminder_next_stage=next_stage
             card.reminder_due_at=reminder_due_at(card,next_stage) if next_stage else None
             card.reminder_can_send=bool(due)
-            card.reminder_whatsapp_url=whatsapp_url(card,next_stage,request,now) if due else None
+            card.reminder_whatsapp_url=reverse('reminder_open',args=[card.id]) if due else None
         if reminder_filter!='ALL':
             shown_cards=[card for card in shown_cards if card.reminder_last_stage==reminder_filter]
         for value,label in reminder_groups:
@@ -284,6 +286,30 @@ def cards_view(request):
             params['reminder']=value
             reminder_group_links.append({'value':value,'label':label,'url':f'{reverse("cards")}?{params.urlencode()}'})
     return render(request,'giftcards/cards.html',{'cards':shown_cards,'statuses':statuses,'kinds':GiftCard.Kind.choices,'status_filter':status,'kind_filter':kind,'query':query,'staff':User.objects.filter(profile__role='STAFF'),'staff_filter':staff,'from_filter':start,'to_filter':end,'reminder_group_links':reminder_group_links,'reminder_filter':reminder_filter})
+
+@role_required('ADMIN')
+@require_GET
+def reminder_open(request,card_id):
+    if not request.user.is_superuser: return HttpResponse('Only the owner can open reminders.',status=403)
+    card=get_object_or_404(GiftCard,pk=card_id)
+    now=database_now()
+    sent=set(CardReminder.objects.filter(card=card).values_list('stage',flat=True))
+    stage,due=next_reminder(card,sent,now)
+    if not due:
+        messages.error(request,'This reminder is not available yet.')
+        return redirect(f'{reverse("cards")}?status=READY')
+    status_url=card.reminder_short_url
+    if not status_url:
+        destination=public_status_url(request,card)
+        try:
+            status_url=shorten_card_url(destination)
+        except TinyURLUnavailable:
+            status_url=destination
+        else:
+            GiftCard.objects.filter(pk=card.pk,reminder_short_url='').update(reminder_short_url=status_url)
+            card.refresh_from_db(fields=['reminder_short_url'])
+            status_url=card.reminder_short_url
+    return redirect(whatsapp_url(card,stage,request,now,status_url))
 
 @role_required('ADMIN')
 @require_POST
@@ -374,6 +400,7 @@ def public_card_status(request, short_token=None):
     response=render(request,'giftcards/public_status.html',{
         'card':card,'attempted':attempted,'invalid':invalid,'limited':limited,
         'status':card.display_status if card else None,
+        'preview_image_url':request.build_absolute_uri(static('brand/umerrick-logo.jpg')),
     })
     response['Cache-Control']='no-store'
     response['Referrer-Policy']='no-referrer'
