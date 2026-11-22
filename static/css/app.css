@@ -102,12 +102,6 @@ h2 { margin: 0 0 17px; color: var(--ink); font-size: 14px; line-height: 1.4; fon
 .danger:hover { background: #F0E3E0; }
 .full { width: 100%; }
 .panel { padding: 21px 22px; border: 1px solid var(--border); background: var(--white); }
-.test-cards-panel { margin-top: 18px; border-radius: 16px; }
-.test-card-form { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
-.test-card-form label { display: grid; gap: 5px; min-width: min(100%, 210px); flex: 1; }
-.test-card-form button { margin: 0; }
-.test-cards-panel .card-mobile-item { display: block; margin-top: 12px; padding: 16px; border: 1px solid var(--border); border-radius: 12px; }
-.test-cards-panel .card-mobile-item p { margin: 6px 0 10px; }
 .narrow { width: min(100%, 590px); }
 .stats { margin: 0 0 30px; display: grid; grid-template-columns: repeat(6,minmax(0,1fr)); border: 1px solid var(--border); background: #fff; }
 .stat { min-height: 94px; padding: 17px 18px 15px; border-right: 1px solid var(--border); }

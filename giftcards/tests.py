@@ -15,59 +15,29 @@ from .reminders import next_reminder, reminder_due_at, reminder_message, whatsap
 
 
 @override_settings(PASSWORD_HASHERS=['django.contrib.auth.hashers.MD5PasswordHasher'])
-class OwnerTestCardTests(TestCase):
+class LegacyTestCardSafetyTests(TestCase):
     def setUp(self):
         self.owner=User.objects.create_superuser('testowner',password='Strong-admin-pass-912!')
-        self.staff=User.objects.create_user('teststaff',password='Strong-staff-pass-912!')
 
-    def test_only_superuser_can_create_test_cards(self):
-        self.client.force_login(self.staff)
-        self.assertEqual(self.client.post(reverse('test_cards'),{'kind':'N10','phone':'+2347012345678'}).status_code,403)
-        self.assertFalse(GiftCard.objects.exists())
-
-    def test_test_card_reminders_are_immediate_and_excluded_from_reports(self):
+    def test_creation_page_is_removed_and_existing_test_cards_stay_isolated(self):
         self.client.force_login(self.owner)
-        response=self.client.post(reverse('test_cards'),{'kind':'N10','phone':'+2347012345678'})
-        self.assertEqual(response.status_code,302)
-        card=GiftCard.objects.get()
-        self.assertTrue(card.is_test)
-        self.assertEqual(card.display_status,'READY')
-        self.assertEqual(card.customer_phone,'+2347012345678')
+        self.assertEqual(self.client.get('/cards/test/').status_code,404)
+        card=generate_cards(self.owner,'N10',1)[0]
+        card.is_test=True
+        card.status=GiftCard.Status.ACTIVE
+        card.customer_phone='+2347012345678'
+        card.activated_at=timezone.now()-timedelta(days=10)
+        card.expires_at=timezone.now()+timedelta(days=10)
+        card.save()
         self.assertNotContains(self.client.get(reverse('cards')+'?status=READY'),card.code)
         self.assertNotIn(card.code,self.client.get(reverse('report_csv')).content.decode())
-        self.assertNotContains(self.client.get(reverse('dashboard')),card.code)
-        self.assertContains(self.client.get(reverse('public_card_status')+'?token=invalid'), 'Check your gift card')
-        for stage in CardReminder.Stage.values:
-            next_stage,due=next_reminder(card,set(CardReminder.objects.filter(card=card).values_list('stage',flat=True)))
-            self.assertEqual(next_stage,stage)
-            self.assertIsNotNone(due)
-            result=self.client.post(reverse('reminder_mark_sent',args=[card.pk]),{'stage':stage})
-            self.assertRedirects(result,reverse('test_cards'))
-        self.assertEqual(CardReminder.objects.filter(card=card).count(),3)
-        self.assertIsNone(next_reminder(card,set(CardReminder.Stage.values))[0])
-        self.assertIn('TEST CARD',CardReminder.objects.get(card=card,stage='FIRST').message)
-
-    def test_test_card_cannot_be_redeemed(self):
-        self.client.force_login(self.owner)
-        self.client.post(reverse('test_cards'),{'kind':'N10','phone':'+2347012345678'})
-        card=GiftCard.objects.get()
+        self.assertIsNone(next_reminder(card,set())[0])
+        self.assertEqual(self.client.get(reverse('reminder_open',args=[card.pk])).status_code,404)
+        self.assertEqual(self.client.post(reverse('reminder_mark_sent',args=[card.pk]),{'stage':'FIRST'}).status_code,404)
+        self.assertEqual(self.client.post(reverse('reminder_undo_sent',args=[card.pk]),{'stage':'FIRST'}).status_code,404)
         response=self.client.post(reverse('redeem',args=[card.pk]),data='{"amount":"20000"}',content_type='application/json')
         self.assertEqual(response.status_code,409)
         self.assertFalse(Redemption.objects.filter(card=card).exists())
-
-    def test_test_card_latest_reminder_can_be_undone_and_resent(self):
-        self.client.force_login(self.owner)
-        self.client.post(reverse('test_cards'),{'kind':'N10','phone':'+2347012345678'})
-        card=GiftCard.objects.get()
-        mark=reverse('reminder_mark_sent',args=[card.pk])
-        undo=reverse('reminder_undo_sent',args=[card.pk])
-        self.client.post(mark,{'stage':'FIRST'})
-        self.assertContains(self.client.get(reverse('test_cards')),'Undo mark')
-        self.assertRedirects(self.client.post(undo,{'stage':'FIRST'}),reverse('test_cards'))
-        self.assertFalse(CardReminder.objects.filter(card=card).exists())
-        self.assertEqual(next_reminder(card,set())[0],'FIRST')
-        self.client.post(mark,{'stage':'FIRST'})
-        self.assertEqual(CardReminder.objects.filter(card=card,stage='FIRST').count(),1)
 
 @override_settings(PASSWORD_HASHERS=['django.contrib.auth.hashers.MD5PasswordHasher'])
 class PriceListTests(TestCase):

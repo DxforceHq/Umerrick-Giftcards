@@ -291,56 +291,16 @@ def cards_view(request):
 
 
 @role_required('ADMIN')
-@require_http_methods(['GET', 'POST'])
-def test_cards(request):
-    if not request.user.is_superuser:
-        return HttpResponse('Only the owner can manage test cards.', status=403)
-    if request.method == 'POST':
-        kind=request.POST.get('kind', '')
-        try:
-            phone=normalize_customer_phone(request.POST.get('phone', ''))
-            if not phone:
-                raise ValueError('Enter a phone number for the test message.')
-            if kind not in GiftCard.Kind.values:
-                raise ValueError('Choose a valid reward.')
-            with transaction.atomic():
-                card=generate_cards(request.user,kind,1)[0]
-                card.is_test=True
-                card.save(update_fields=['is_test'])
-                card=activate(card.pk,request.user,phone)
-                card.activated_at=card.activated_at-timezone.timedelta(hours=73)
-                card.expires_at=database_now()+timezone.timedelta(days=7)
-                card.save(update_fields=['activated_at','expires_at'])
-                AuditEvent.objects.create(card=card,actor=request.user,action='TEST_CARD_CREATED',previous_state='ACTIVE',new_state='ACTIVE',outcome='SUCCESS',details={'test_card':True})
-        except ValueError as exc:
-            messages.error(request,str(exc))
-        else:
-            messages.success(request,'Test card activated. Its first reminder is ready.')
-            return redirect('test_cards')
-    now=database_now()
-    cards=list(GiftCard.objects.filter(is_test=True).prefetch_related('reminders').order_by('-created_at')[:50])
-    for card in cards:
-        history=list(card.reminders.all())
-        sent={item.stage for item in history}
-        card.reminder_history=history
-        card.reminder_last_sent=history[-1] if history else None
-        stage,due=next_reminder(card,sent,now)
-        card.reminder_next_stage=stage
-        card.reminder_can_send=bool(due)
-        card.reminder_whatsapp_url=reverse('reminder_open',args=[card.pk]) if due else None
-    return render(request,'giftcards/test_cards.html',{'cards':cards,'kinds':GiftCard.Kind.choices})
-
-@role_required('ADMIN')
 @require_GET
 def reminder_open(request,card_id):
     if not request.user.is_superuser: return HttpResponse('Only the owner can open reminders.',status=403)
-    card=get_object_or_404(GiftCard,pk=card_id)
+    card=get_object_or_404(GiftCard,pk=card_id,is_test=False)
     now=database_now()
     sent=set(CardReminder.objects.filter(card=card).values_list('stage',flat=True))
     stage,due=next_reminder(card,sent,now)
     if not due:
         messages.error(request,'This reminder is not available yet.')
-        return redirect('test_cards' if card.is_test else f'{reverse("cards")}?status=READY')
+        return redirect(f'{reverse("cards")}?status=READY')
     status_url=card.reminder_short_url
     if not status_url:
         destination=public_status_url(request,card)
@@ -360,7 +320,7 @@ def reminder_open(request,card_id):
 def reminder_mark_sent(request,card_id):
     if not request.user.is_superuser: return HttpResponse('Only the owner can record reminders.',status=403)
     with transaction.atomic():
-        card=get_object_or_404(GiftCard.objects.select_for_update(),pk=card_id)
+        card=get_object_or_404(GiftCard.objects.select_for_update(),pk=card_id,is_test=False)
         now=database_now()
         sent=set(CardReminder.objects.filter(card=card).values_list('stage',flat=True))
         stage,due=next_reminder(card,sent,now)
@@ -370,7 +330,7 @@ def reminder_mark_sent(request,card_id):
             CardReminder.objects.create(card=card,stage=stage,sent_at=now,sent_by=request.user,
                                         message=reminder_message(card,stage,request,now))
             messages.success(request,'Reminder marked as sent.')
-    return redirect('test_cards' if card.is_test else f'{reverse("cards")}?status=READY')
+    return redirect(f'{reverse("cards")}?status=READY')
 
 
 @role_required('ADMIN')
@@ -379,7 +339,7 @@ def reminder_undo_sent(request,card_id):
     if not request.user.is_superuser:
         return HttpResponse('Only the owner can undo reminders.',status=403)
     with transaction.atomic():
-        card=get_object_or_404(GiftCard.objects.select_for_update(),pk=card_id)
+        card=get_object_or_404(GiftCard.objects.select_for_update(),pk=card_id,is_test=False)
         latest=CardReminder.objects.filter(card=card).order_by('-sent_at','-pk').first()
         if latest is None or latest.stage!=request.POST.get('stage'):
             messages.error(request,'The reminder history changed. Refresh the list and try again.')
@@ -391,7 +351,7 @@ def reminder_undo_sent(request,card_id):
             else:
                 latest.delete()
                 messages.success(request,'Reminder mark undone. Send the message, then mark it sent again.')
-    return redirect('test_cards' if card.is_test else f'{reverse("cards")}?status=READY')
+    return redirect(f'{reverse("cards")}?status=READY')
 @role_required('ADMIN')
 def card_detail(request,card_id):
     card=get_object_or_404(GiftCard.objects.select_related('created_by','activated_by','redeemed_by'),pk=card_id)

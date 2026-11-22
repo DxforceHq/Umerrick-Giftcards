@@ -32,12 +32,10 @@ def reminder_due_at(card, stage):
 
 def next_reminder(card, sent_stages, now=None):
     now = now or timezone.now()
-    if card.status != GiftCard.Status.ACTIVE or not card.customer_phone or not card.eligible_at or not card.expires_at or now >= card.expires_at or now < card.eligible_at:
+    if card.is_test or card.status != GiftCard.Status.ACTIVE or not card.customer_phone or not card.eligible_at or not card.expires_at or now >= card.expires_at or now < card.eligible_at:
         return None, None
     for stage in STAGES:
         if stage not in sent_stages:
-            if card.is_test:
-                return stage, now
             due_at = reminder_due_at(card, stage)
             return stage, due_at if due_at and now >= due_at else None
     return None, None
