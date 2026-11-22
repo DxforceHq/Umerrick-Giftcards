@@ -467,7 +467,7 @@ def public_card_status(request, short_token=None):
         'status':card.display_status if card else None,
         'canonical_url':public_status_url(request,card) if card else request.build_absolute_uri(reverse('public_card_status')),
         'meta_app_id':settings.META_APP_ID,
-        'preview_image_url':request.build_absolute_uri(static('brand/umerrick-logo.jpg')),
+        'preview_image_url':request.build_absolute_uri(static('brand/pwa-symbol-512.png')),
     })
     response['Cache-Control']='no-store'
     response['Referrer-Policy']='no-referrer'
@@ -477,19 +477,6 @@ def public_card_status(request, short_token=None):
 def gift_card_terms(request):
     return render(request, 'giftcards/terms.html')
 
-
-@require_GET
-def preview_test(request):
-    """Temporary public probe for the card page's Open Graph image."""
-    response=render(request,'giftcards/preview_test.html',{
-        'canonical_url':request.build_absolute_uri(reverse('preview_test')),
-        'meta_app_id':settings.META_APP_ID,
-        'preview_image_url':request.build_absolute_uri(static('brand/umerrick-logo.jpg')),
-    })
-    response['Cache-Control']='no-store'
-    response['Referrer-Policy']='no-referrer'
-    response['X-Robots-Tag']='noindex, nofollow'
-    return response
 
 def card_json(card):
     return {'id':str(card.id),'code':card.code,'kind':card.get_kind_display(),'status':card.display_status,'activated_at':card.activated_at.isoformat() if card.activated_at else None,'eligible_at':card.eligible_at.isoformat() if card.eligible_at else None,'expires_at':card.expires_at.isoformat() if card.expires_at else None,'value':str(card.value) if card.value is not None else None,'activation_purchase_amount':str(card.activation_purchase_amount) if card.activation_purchase_amount is not None else None,'server_now':database_now().isoformat()}
