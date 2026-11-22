@@ -33,8 +33,12 @@ def shorten_card_url(destination):
     try:
         with urlopen(request, timeout=5) as response:
             result = json.load(response)
-    except (HTTPError, URLError, TimeoutError, ValueError, OSError) as exc:
-        raise TinyURLUnavailable('TinyURL request failed') from exc
+    except HTTPError as exc:
+        raise TinyURLUnavailable(f'TinyURL returned HTTP {exc.code}') from exc
+    except (URLError, TimeoutError, OSError) as exc:
+        raise TinyURLUnavailable('The server could not reach TinyURL') from exc
+    except ValueError as exc:
+        raise TinyURLUnavailable('TinyURL returned an unreadable response') from exc
 
     data = result.get('data') if isinstance(result, dict) else None
     short_url = data.get('tiny_url') if isinstance(data, dict) else None

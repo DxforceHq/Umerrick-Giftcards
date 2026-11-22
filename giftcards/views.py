@@ -303,8 +303,11 @@ def reminder_open(request,card_id):
         destination=public_status_url(request,card)
         try:
             status_url=shorten_card_url(destination)
-        except TinyURLUnavailable:
-            status_url=destination
+        except TinyURLUnavailable as exc:
+            return render(request,'giftcards/reminder_link_unavailable.html',{
+                'reason':str(exc),
+                'fallback_url':whatsapp_url(card,stage,request,now,destination),
+            })
         else:
             GiftCard.objects.filter(pk=card.pk,reminder_short_url='').update(reminder_short_url=status_url)
             card.refresh_from_db(fields=['reminder_short_url'])

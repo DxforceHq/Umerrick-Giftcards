@@ -272,8 +272,10 @@ class GiftCardTests(TestCase):
         self.client.force_login(self.admin)
         with patch('giftcards.views.shorten_card_url',side_effect=TinyURLUnavailable('unavailable')):
             response=self.client.get(reverse('reminder_open',args=[card.pk]))
-        message=parse_qs(urlparse(response['Location']).query)['text'][0]
-        self.assertIn('http://testserver/g/',message)
+        self.assertContains(response,'Short link unavailable')
+        self.assertContains(response,'unavailable')
+        self.assertContains(response,'Open WhatsApp with original link')
+        self.assertContains(response,'http%3A%2F%2Ftestserver%2Fg%2F')
         card.refresh_from_db()
         self.assertFalse(card.reminder_short_url)
 
