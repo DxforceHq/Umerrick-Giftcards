@@ -272,10 +272,10 @@ class GiftCardTests(TestCase):
         self.client.force_login(self.admin)
         with patch('giftcards.views.shorten_card_url',side_effect=TinyURLUnavailable('unavailable')):
             response=self.client.get(reverse('reminder_open',args=[card.pk]))
-        self.assertContains(response,'Short link unavailable')
-        self.assertContains(response,'unavailable')
-        self.assertContains(response,'Open WhatsApp with original link')
-        self.assertContains(response,'http%3A%2F%2Ftestserver%2Fg%2F')
+        self.assertEqual(response.status_code,302)
+        self.assertIn('wa.me/2347012345678',response['Location'])
+        message=parse_qs(urlparse(response['Location']).query)['text'][0]
+        self.assertIn('http://testserver/g/',message)
         card.refresh_from_db()
         self.assertFalse(card.reminder_short_url)
 
@@ -291,6 +291,15 @@ class GiftCardTests(TestCase):
         self.assertEqual(request.full_url,'https://api.tinyurl.com/create')
         self.assertEqual(request.get_header('Authorization'),'Bearer test-key')
         self.assertEqual(__import__('json').loads(request.data)['url'],'https://example.com/g/a-long-signed-token/')
+
+    def test_tinyurl_configuration_error_identifies_missing_setting(self):
+        from .tinyurl import TinyURLUnavailable, shorten_card_url
+        with patch.dict('os.environ',{'TINYURL_API_KEY':'','TINYURL_API_URL':'https://api.tinyurl.com'}):
+            with self.assertRaisesRegex(TinyURLUnavailable,'TINYURL_API_KEY is missing'):
+                shorten_card_url('https://example.com/g/a-long-signed-token/')
+        with patch.dict('os.environ',{'TINYURL_API_KEY':'test-key','TINYURL_API_URL':'http://api.tinyurl.com'}):
+            with self.assertRaisesRegex(TinyURLUnavailable,'TINYURL_API_URL must be'):
+                shorten_card_url('https://example.com/g/a-long-signed-token/')
 
     @override_settings(ALLOWED_HOSTS=['test.ngrok-free.app'])
     def test_ngrok_card_link_uses_forwarded_https(self):

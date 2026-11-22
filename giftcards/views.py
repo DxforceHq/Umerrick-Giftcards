@@ -1,4 +1,4 @@
-import base64, hashlib, io, json, re, uuid
+import base64, hashlib, io, json, logging, re, uuid
 from datetime import date, datetime, time, timedelta, timezone as datetime_timezone
 from zoneinfo import ZoneInfo
 from urllib.parse import parse_qs, urlencode, urlparse
@@ -26,6 +26,8 @@ from .reminders import next_reminder, reminder_due_at, reminder_message, whatsap
 from .card_links import QR_SIGNING_SALT, card_token, card_id_from_short_token, public_status_url
 from .tinyurl import shorten_card_url, TinyURLUnavailable
 from .services import generate_cards, activate, redeem, card_discount, database_now, normalize_customer_phone
+
+logger = logging.getLogger(__name__)
 
 def request_json(request):
     try: data=json.loads(request.body or '{}')
@@ -304,10 +306,8 @@ def reminder_open(request,card_id):
         try:
             status_url=shorten_card_url(destination)
         except TinyURLUnavailable as exc:
-            return render(request,'giftcards/reminder_link_unavailable.html',{
-                'reason':str(exc),
-                'fallback_url':whatsapp_url(card,stage,request,now,destination),
-            })
+            logger.warning('TinyURL reminder link unavailable: %s', exc)
+            status_url=destination
         else:
             GiftCard.objects.filter(pk=card.pk,reminder_short_url='').update(reminder_short_url=status_url)
             card.refresh_from_db(fields=['reminder_short_url'])

@@ -14,8 +14,10 @@ def shorten_card_url(destination):
     key = os.environ.get('TINYURL_API_KEY', '').strip()
     api_url = os.environ.get('TINYURL_API_URL', 'https://api.tinyurl.com').rstrip('/')
     parsed_api = urlparse(api_url)
-    if not key or parsed_api.scheme != 'https' or parsed_api.hostname != 'api.tinyurl.com':
-        raise TinyURLUnavailable('TinyURL is not configured')
+    if not key:
+        raise TinyURLUnavailable('TINYURL_API_KEY is missing from the application environment')
+    if parsed_api.scheme != 'https' or parsed_api.hostname != 'api.tinyurl.com':
+        raise TinyURLUnavailable('TINYURL_API_URL must be https://api.tinyurl.com')
     parsed_destination = urlparse(destination)
     if parsed_destination.scheme != 'https' or not parsed_destination.netloc:
         raise TinyURLUnavailable('Only public HTTPS card links can be shortened')
