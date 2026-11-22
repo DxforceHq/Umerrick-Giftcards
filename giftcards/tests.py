@@ -602,6 +602,23 @@ class GiftCardTests(TestCase):
         response=self.client.get(reverse('public_card_status'))
         self.assertContains(response,'property="og:url" content="http://testserver/gift-card-status/"')
         self.assertContains(response,'property="fb:app_id" content="123456789"')
+
+    def test_public_preview_probe_uses_same_image_without_card_data(self):
+        card=self.card('N10','ACTIVE')
+        card.customer_phone='+2347012345678'
+        card.save(update_fields=['customer_phone'])
+        self.client.logout()
+        response=self.client.get(reverse('preview_test'))
+        self.assertContains(response,'property="og:url" content="http://testserver/preview-test/"')
+        self.assertContains(response,'property="og:title" content="Check your gift card · U_MERRICK"')
+        self.assertContains(response,'property="og:image" content="http://testserver/static/brand/umerrick-logo.jpg"')
+        self.assertContains(response,'property="og:image:width" content="1280"')
+        self.assertContains(response,'property="og:image:height" content="725"')
+        self.assertNotContains(response,card.code)
+        self.assertNotContains(response,card.customer_phone)
+        self.assertEqual(response['Cache-Control'],'no-store')
+        self.assertEqual(response['X-Robots-Tag'],'noindex, nofollow')
+        self.assertEqual(self.client.post(reverse('preview_test')).status_code,405)
     def test_public_manual_code_reports_waiting_and_rejects_unknown(self):
         card=self.card('N10','ACTIVE',hours=1)
         self.client.logout()
