@@ -467,7 +467,7 @@ def public_card_status(request, short_token=None):
         'status':card.display_status if card else None,
         'canonical_url':public_status_url(request,card) if card else request.build_absolute_uri(reverse('public_card_status')),
         'meta_app_id':settings.META_APP_ID,
-        'preview_image_url':request.build_absolute_uri(static('brand/pwa-symbol-512.png')),
+        'preview_image_url':request.build_absolute_uri(static('brand/umerrick-logo.jpg')),
     })
     response['Cache-Control']='no-store'
     response['Referrer-Policy']='no-referrer'

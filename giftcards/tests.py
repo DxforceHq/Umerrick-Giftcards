@@ -581,7 +581,7 @@ class GiftCardTests(TestCase):
         self.assertNotContains(response,'property="fb:app_id"')
         self.assertContains(response,'₦15,000')
         self.assertContains(response,'Your digital gift card')
-        self.assertContains(response,'property="og:image" content="http://testserver/static/brand/pwa-symbol-512.png"')
+        self.assertContains(response,'property="og:image" content="http://testserver/static/brand/umerrick-logo.jpg"')
         self.assertContains(response,'property="og:title" content="Check your gift card · U_MERRICK"')
         self.assertContains(response,'class="public-digital-card"')
         self.assertContains(response,'class="gift-front"')
