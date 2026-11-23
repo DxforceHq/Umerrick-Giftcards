@@ -7,7 +7,7 @@ from django.conf import settings
 from unittest.mock import patch
 from django.contrib.auth.models import User
 from django.db import IntegrityError, connection, transaction
-from django.test import RequestFactory, TestCase, TransactionTestCase, skipUnlessDBFeature, override_settings
+from django.test import Client, RequestFactory, TestCase, TransactionTestCase, skipUnlessDBFeature, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from .models import AuditEvent, GiftCard, Redemption, Profile, PriceItem, CardReminder
@@ -564,6 +564,7 @@ class GiftCardTests(TestCase):
         self.assertNotContains(response,'50000.00')
         self.assertNotContains(response,card.code)
         self.assertEqual(response['Cache-Control'],'no-store')
+        self.assertEqual(response['Referrer-Policy'],'same-origin')
         card.refresh_from_db()
         self.assertEqual(card.status,GiftCard.Status.ACTIVE)
 
@@ -585,6 +586,21 @@ class GiftCardTests(TestCase):
         self.assertNotContains(invalid,'href="'+reverse('gift_card_terms')+'"')
         self.assertContains(invalid,'id="public-scan-preview"')
         self.assertContains(invalid,'id="gift-code"')
+
+    @override_settings(
+        ALLOWED_HOSTS=['umerricks-giftcard.clockking-app.com'],
+        CSRF_TRUSTED_ORIGINS=['https://umerricks-giftcard.clockking-app.com'],
+    )
+    def test_public_code_form_accepts_https_origin_behind_proxy(self):
+        card=self.card('N10','ACTIVE',hours=1)
+        browser=Client(enforce_csrf_checks=True)
+        host='umerricks-giftcard.clockking-app.com'
+        origin=f'https://{host}'
+        page=browser.get(reverse('public_card_status'),HTTP_HOST=host)
+        self.assertEqual(page.status_code,200)
+        csrf_token=browser.cookies['csrftoken'].value
+        result=browser.post(reverse('public_card_status'),{'code':card.code,'csrfmiddlewaretoken':csrf_token},HTTP_HOST=host,HTTP_ORIGIN=origin)
+        self.assertContains(result,'Waiting period')
     def test_public_status_rejects_tampered_token(self):
         card=self.card()
         token=parse_qs(urlparse(qr_payload(RequestFactory().get('/scan/'),card)).query)['token'][0]

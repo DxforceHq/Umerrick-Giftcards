@@ -22,9 +22,10 @@ for name in ("TINYURL_API_KEY", "TINYURL_API_URL"):
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "dev-local-only-change-me")
 DEBUG = True
 ALLOWED_HOSTS = csv_env("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1")
-CSRF_TRUSTED_ORIGINS = csv_env(
-    "DJANGO_CSRF_TRUSTED_ORIGINS", "https://*.ngrok-free.app"
-)
+CSRF_TRUSTED_ORIGINS = [
+    origin.rstrip("/")
+    for origin in csv_env("DJANGO_CSRF_TRUSTED_ORIGINS", "https://*.ngrok-free.app")
+]
 
 database_url = os.environ.get("DATABASE_URL", "").strip()
 if database_url:

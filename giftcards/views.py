@@ -430,7 +430,7 @@ def public_card_status(request, short_token=None):
         'preview_image_url':request.build_absolute_uri(static('brand/umerrick-logo.jpg')),
     })
     response['Cache-Control']='no-store'
-    response['Referrer-Policy']='no-referrer'
+    response['Referrer-Policy']='same-origin'
     response['X-Robots-Tag']='noindex, nofollow'
     return response
 

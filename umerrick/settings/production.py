@@ -21,7 +21,7 @@ ALLOWED_HOSTS = csv_env("DJANGO_ALLOWED_HOSTS")
 if not ALLOWED_HOSTS or "*" in ALLOWED_HOSTS:
     raise ImproperlyConfigured("DJANGO_ALLOWED_HOSTS must contain exact production hosts.")
 
-CSRF_TRUSTED_ORIGINS = csv_env("DJANGO_CSRF_TRUSTED_ORIGINS")
+CSRF_TRUSTED_ORIGINS = [origin.rstrip("/") for origin in csv_env("DJANGO_CSRF_TRUSTED_ORIGINS")]
 if not CSRF_TRUSTED_ORIGINS:
     raise ImproperlyConfigured("DJANGO_CSRF_TRUSTED_ORIGINS must contain the HTTPS application origin.")
 if any("*" in origin or not origin.startswith("https://") for origin in CSRF_TRUSTED_ORIGINS):
