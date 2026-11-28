@@ -527,7 +527,11 @@ class GiftCardTests(TestCase):
         self.assertFalse(AuditEvent.objects.filter(action='ADMIN_ACCESS_DENIED').exists())
 
     def test_dashboard_and_scanner_templates_render(self):
-        self.client.force_login(self.admin); self.assertEqual(self.client.get(reverse('dashboard')).status_code,200)
+        self.client.force_login(self.admin)
+        dashboard=self.client.get(reverse('dashboard'))
+        self.assertEqual(dashboard.status_code,200)
+        self.assertContains(dashboard,'class="scanner-shortcut" href="/scan/?camera=1"')
+        self.assertNotContains(dashboard,'class="app-refresh"')
         self.client.force_login(self.staff); self.assertEqual(self.client.get(reverse('dashboard')).status_code,200)
         scanner_response=self.client.get(reverse('scanner'))
         self.assertEqual(scanner_response.status_code,200)

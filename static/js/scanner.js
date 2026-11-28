@@ -414,6 +414,9 @@
   }
 
   start.addEventListener('click', startCamera);
+  if (new URLSearchParams(window.location.search).get('camera') === '1') {
+    setTimeout(() => { void startCamera(); }, 0);
+  }
   function onPermissionStatus(state) {
     if (starting || scanning || processing) return;
     if (state === 'granted') setMessage('Camera ready. Start scanning or use the printed code.');

@@ -1,9 +1,8 @@
 /* Shared U_MERRICK application design. Print card artwork remains in app.css. */
-.app-refresh { min-width: 38px; min-height: 38px; padding: 0 10px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--white); color: var(--ink); font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; }
-.app-refresh:hover { border-color: var(--gold); }
-.app-refresh:disabled { opacity: .65; cursor: progress; }
-.app-refresh svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-.app-refresh:focus-visible, .app-welcome button:focus-visible { outline: 3px solid var(--gold); outline-offset: 3px; }
+.scanner-shortcut { width: 44px; height: 44px; flex: none; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--white); color: var(--ink); cursor: pointer; text-decoration: none; }
+.scanner-shortcut:hover { border-color: var(--gold); }
+.scanner-shortcut svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.scanner-shortcut:focus-visible, .app-welcome button:focus-visible { outline: 3px solid var(--gold); outline-offset: 3px; }
 .app-install[hidden] { display: none !important; }
 .app-install { position: fixed; z-index: 110; inset: 0; padding: max(20px, env(safe-area-inset-top)) 16px max(20px, env(safe-area-inset-bottom)); display: grid; place-items: center; overflow-y: auto; background: rgba(17,17,17,.58); }
 .app-install-panel { width: min(100%, 430px); padding: 25px; border: 1px solid var(--border); border-radius: 16px; background: var(--white); color: var(--ink); box-shadow: 0 20px 60px rgba(0,0,0,.18); }
@@ -37,9 +36,9 @@
 .app-welcome-foot { margin-top: 18px; display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #625D55; font-size: 11px; }
 .app-welcome-foot strong { color: #1A1814; }
 .app-welcome-foot button { padding: 8px 0; border: 0; background: none; color: #72501D; font: inherit; font-weight: 700; cursor: pointer; }
-@media (max-width: 600px) { .app-refresh { width: 44px; height: 44px; padding: 0; flex: none; } .app-refresh span { display: none; } .app-welcome-inner { padding-inline: 20px; } .app-welcome-panel { padding: 22px; } }
+@media (max-width: 600px) { .app-welcome-inner { padding-inline: 20px; } .app-welcome-panel { padding: 22px; } }
 @media (max-height: 600px) { .app-welcome-art { min-height: 100px; } .welcome-ring { width: 140px; } .welcome-ring-two { width: 100px; } .welcome-monogram { font-size: 60px; } }
-@media (prefers-reduced-motion: reduce) { .app-refresh, .app-welcome * { transition: none !important; animation: none !important; } }
+@media (prefers-reduced-motion: reduce) { .scanner-shortcut, .app-welcome * { transition: none !important; animation: none !important; } }
 .price-heading { margin-bottom: 18px; }
 .price-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 18px; }
 .price-toolbar label { margin: 0; flex: none; }

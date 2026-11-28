@@ -19,22 +19,21 @@
     updateThemeButtons();
   }));
 
-  const refreshButton = document.querySelector('.app-refresh');
-  refreshButton?.addEventListener('click', async () => {
-    if (refreshButton.disabled) return;
-    refreshButton.disabled = true;
-    refreshButton.setAttribute('aria-label', 'Refreshing app');
-    refreshButton.querySelector('span').textContent = 'Refreshing…';
-    try {
-      if ('serviceWorker' in navigator) {
-        const registration = await navigator.serviceWorker.getRegistration();
-        if (registration && navigator.onLine) {
-          await Promise.race([registration.update(), new Promise(resolve => setTimeout(resolve, 2500))]);
-        }
-      }
-    } catch (_) { /* Reload still checks the server when available. */ }
-    window.location.reload();
-  });
+  let pullStartY = 0;
+  let pulling = false;
+  document.addEventListener('touchstart', event => {
+    if (window.scrollY === 0 && event.touches.length === 1) pullStartY = event.touches[0].clientY;
+  }, {passive: true});
+  document.addEventListener('touchmove', event => {
+    if (pullStartY && window.scrollY === 0 && event.touches.length === 1) {
+      pulling = event.touches[0].clientY - pullStartY > 72;
+    }
+  }, {passive: true});
+  document.addEventListener('touchend', () => {
+    if (pulling) window.location.reload();
+    pullStartY = 0;
+    pulling = false;
+  }, {passive: true});
 
   if (document.body.classList.contains('app-page') && 'serviceWorker' in navigator && window.isSecureContext) {
     const priceAccess = document.body.dataset.canViewPrices === 'true';
