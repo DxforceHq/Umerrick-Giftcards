@@ -124,8 +124,12 @@
       phone.autocomplete = 'off';
       phone.pattern = '(?:[0-9]{10}|0[0-9]{10})';
       phone.required = true;
-      phone.maxLength = 20;
-      phone.placeholder = '7012345678';
+      phone.minLength = 10;
+      phone.maxLength = 11;
+      phone.placeholder = '7012345678 or 07012345678';
+      phone.addEventListener('input', () => {
+        phone.value = phone.value.replace(/\D/g, '').slice(0, 11);
+      });
       phone.setAttribute('aria-describedby', 'activation-phone-prefix');
       const phoneEntry = document.createElement('div');
       phoneEntry.className = 'phone-input';
