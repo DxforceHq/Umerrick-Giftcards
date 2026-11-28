@@ -19,21 +19,65 @@
     updateThemeButtons();
   }));
 
-  let pullStartY = 0;
-  let pulling = false;
-  document.addEventListener('touchstart', event => {
-    if (window.scrollY === 0 && event.touches.length === 1) pullStartY = event.touches[0].clientY;
-  }, {passive: true});
-  document.addEventListener('touchmove', event => {
-    if (pullStartY && window.scrollY === 0 && event.touches.length === 1) {
-      pulling = event.touches[0].clientY - pullStartY > 72;
-    }
-  }, {passive: true});
-  document.addEventListener('touchend', () => {
-    if (pulling) window.location.reload();
-    pullStartY = 0;
-    pulling = false;
-  }, {passive: true});
+  if (document.body.classList.contains('app-page')) {
+    const indicator = document.createElement('div');
+    indicator.className = 'pull-refresh';
+    indicator.setAttribute('aria-hidden', 'true');
+    indicator.innerHTML = '<svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.1 5.4M20 4v7h-7"/></svg>';
+    indicator.hidden = true;
+    document.body.append(indicator);
+    let startX = 0;
+    let startY = null;
+    let distance = 0;
+    let refreshing = false;
+    let vibrated = false;
+    const resetPull = () => {
+      startY = null;
+      distance = 0;
+      vibrated = false;
+      indicator.hidden = true;
+      indicator.dataset.state = '';
+      indicator.style.transform = '';
+    };
+    document.addEventListener('touchstart', event => {
+      if (refreshing || event.touches.length !== 1 || window.scrollY > 1 ||
+          event.target.closest('input, textarea, select, button, a, [contenteditable], dialog')) return;
+      startX = event.touches[0].clientX;
+      startY = event.touches[0].clientY;
+      distance = 0;
+      vibrated = false;
+    }, {passive: true});
+    document.addEventListener('touchmove', event => {
+      if (startY === null || event.touches.length !== 1) return;
+      const dx = event.touches[0].clientX - startX;
+      const dy = event.touches[0].clientY - startY;
+      if (window.scrollY > 1 || dy < 0 || Math.abs(dx) > Math.abs(dy)) {
+        resetPull();
+        return;
+      }
+      if (dy <= 8) return;
+      if (event.cancelable) event.preventDefault();
+      distance = dy;
+      indicator.hidden = false;
+      indicator.dataset.state = dy >= 80 ? 'ready' : 'pulling';
+      indicator.style.transform = `translate(-50%, ${Math.min(dy / 2, 56)}px)`;
+      if (dy >= 80 && !vibrated) {
+        vibrated = true;
+        navigator.vibrate?.(15);
+      }
+    }, {passive: false});
+    document.addEventListener('touchend', () => {
+      if (startY === null) return;
+      if (distance >= 80) {
+        refreshing = true;
+        indicator.dataset.state = 'refreshing';
+        setTimeout(() => window.location.reload(), 120);
+      } else {
+        resetPull();
+      }
+    }, {passive: true});
+    document.addEventListener('touchcancel', resetPull, {passive: true});
+  }
 
   if (document.body.classList.contains('app-page') && 'serviceWorker' in navigator && window.isSecureContext) {
     const priceAccess = document.body.dataset.canViewPrices === 'true';

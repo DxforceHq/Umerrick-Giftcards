@@ -60,6 +60,13 @@ button, a, input, select { -webkit-tap-highlight-color: transparent; }
 .status-dot { width: 6px; height: 6px; border-radius: 50%; background: #7E9C82; }
 .system-state { margin-left: auto; color: #89857E; font-size: 8px; letter-spacing: .1em; }
 .workspace { min-height: 100vh; margin-left: var(--sidebar-width); display: flex; flex-direction: column; }
+body.app-page { overscroll-behavior-y: contain; }
+.pull-refresh { position: fixed; z-index: 40; top: calc(var(--topbar-height) + 8px); left: 50%; width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 50%; background: var(--white); color: var(--ink); box-shadow: 0 8px 24px rgba(0,0,0,.14); pointer-events: none; }
+.pull-refresh svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; transition: transform .15s ease; }
+.pull-refresh[data-state="ready"] svg { transform: rotate(90deg); }
+.pull-refresh[data-state="refreshing"] svg { animation: pull-refresh-spin .7s linear infinite; }
+.pull-refresh[hidden] { display: none; }
+@keyframes pull-refresh-spin { to { transform: rotate(360deg); } }
 .topbar { position: sticky; z-index: 20; top: 0; height: var(--topbar-height); flex: none; padding: 0 clamp(22px,3.2vw,48px); display: flex; align-items: center; justify-content: space-between; gap: 24px; background: rgba(255,255,255,.97); border-bottom: 1px solid var(--border); }
 .camera-access { min-height: 40px; padding: 7px clamp(22px,3.2vw,48px); display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); background: #F6F3ED; color: #5D5342; font-size: 11px; line-height: 1.45; }
 .camera-access[hidden], .camera-access button[hidden] { display: none; }

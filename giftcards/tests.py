@@ -701,11 +701,14 @@ class GiftCardTests(TestCase):
         self.assertEqual(response.context['period'],'30d')
         self.assertEqual(response.context['stats']['TOTAL'],1)
         self.assertEqual(sum(response.context['chart']['issued']),1)
-    def test_camera_permission_ui_is_only_on_authenticated_pages(self):
+    def test_camera_permission_banner_is_removed_from_app_pages(self):
         self.client.force_login(self.staff)
         dashboard=self.client.get(reverse('dashboard'))
-        self.assertContains(dashboard,'id="camera-access"')
-        self.assertContains(dashboard,'js/camera-permission.js')
+        self.assertNotContains(dashboard,'id="camera-access"')
+        self.assertNotContains(dashboard,'js/camera-permission.js')
+        scanner=self.client.get(reverse('scanner'))
+        self.assertNotContains(scanner,'id="camera-access"')
+        self.assertContains(scanner,'id="camera-start"')
         self.client.logout()
         login=self.client.get(reverse('login'))
         self.assertNotContains(login,'id="camera-access"')
