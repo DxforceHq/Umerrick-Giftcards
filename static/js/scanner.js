@@ -122,9 +122,9 @@
       phone.type = 'tel';
       phone.inputMode = 'numeric';
       phone.autocomplete = 'off';
-      phone.pattern = '[0-9]{10}';
+      phone.pattern = '(?:[0-9]{10}|0[0-9]{10})';
       phone.required = true;
-      phone.maxLength = 10;
+      phone.maxLength = 20;
       phone.placeholder = '7012345678';
       phone.setAttribute('aria-describedby', 'activation-phone-prefix');
       const phoneEntry = document.createElement('div');
@@ -204,8 +204,9 @@
 
   async function activate(id, customerPhone, activationPurchaseAmount) {
     hideError();
-    if (!/^[0-9]{10}$/.test(customerPhone)) {
-      showError('Enter the customer phone number: exactly 10 digits after +234.');
+    customerPhone = customerPhone.replace(/\D/g, '');
+    if (!/^(?:[0-9]{10}|0[0-9]{10})$/.test(customerPhone)) {
+      showError('Enter 10 digits after +234, or the local 11-digit number beginning with 0.');
       document.querySelector('#activation-phone')?.focus();
       return;
     }

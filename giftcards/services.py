@@ -72,7 +72,7 @@ def activate(card_id,actor,customer_phone='',activation_purchase_amount=None):
             try:
                 phone=normalize_customer_phone(customer_phone)
                 if not phone:
-                    raise ValueError('Enter the customer phone number: 10 digits after +234.')
+                    raise ValueError('Enter 10 digits after +234, or the local 11-digit number beginning with 0.')
                 spent=activation_spend(activation_purchase_amount)
             except ValueError as exc:
                 failure=str(exc); reason_code='INVALID_ACTIVATION_DETAILS'
