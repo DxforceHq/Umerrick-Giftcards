@@ -36,7 +36,15 @@ def normalize_customer_phone(value):
     if not isinstance(value,str): raise ValueError('Enter exactly 10 digits after +234.')
     raw=value.strip()
     if not raw: return ''
-    digits=raw[4:] if raw.startswith('+234') else raw
+    # Accept common Nigerian formats, but always persist one WhatsApp-safe form:
+    # +234 followed by the ten-digit national number without its local 0.
+    digits=''.join(character for character in raw if character.isdigit())
+    if raw.lstrip().startswith('+') and not digits.startswith('234'):
+        raise ValueError('Enter a Nigerian phone number beginning with +234 or 0.')
+    if digits.startswith('234'):
+        digits=digits[3:]
+    elif digits.startswith('0'):
+        digits=digits[1:]
     if not re.fullmatch(r'[0-9]{10}',digits):
         raise ValueError('Enter exactly 10 digits after +234.')
     return '+234'+digits

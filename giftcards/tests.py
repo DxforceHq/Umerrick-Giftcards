@@ -156,7 +156,7 @@ class PriceListTests(TestCase):
         self.client.force_login(self.staff)
         response=self.client.get(reverse('prices'))
         self.assertNotContains(response,'price-admin-item')
-from .services import generate_cards, card_discount, activate, redeem
+from .services import generate_cards, card_discount, activate, redeem, normalize_customer_phone
 from .views import qr_payload
 
 @override_settings(PASSWORD_HASHERS=['django.contrib.auth.hashers.MD5PasswordHasher'])
@@ -217,6 +217,18 @@ class GiftCardTests(TestCase):
             if status=='REDEEMED': c.redeemed_at=now; c.redeemed_by=self.staff
             c.save()
         return c
+    def test_customer_phone_normalizes_common_nigerian_formats(self):
+        expected='+2347012345678'
+        for value in ('07012345678', '0701 234 5678', '+2347012345678', '+234 701 234 5678', '234 (701) 234-5678'):
+            self.assertEqual(normalize_customer_phone(value), expected)
+
+    def test_activation_persists_normalized_phone(self):
+        card=self.card()
+        self.client.force_login(self.staff)
+        response=self.client.post(reverse('activate',args=[card.id]),content_type='application/json',data='{"customer_phone":"0701 234 5678"}')
+        self.assertEqual(response.status_code,200)
+        card.refresh_from_db()
+        self.assertEqual(card.customer_phone,'+2347012345678')
     def test_reminder_schedule_and_dynamic_message(self):
         card=self.card('N10','ACTIVE',hours=24*40,expiry_days=20)
         card.customer_phone='+2347012345678'; card.save(update_fields=['customer_phone'])
